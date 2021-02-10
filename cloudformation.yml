@@ -1,0 +1,490 @@
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  VpcCIDR:
+    Type: String
+    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
+    Default: 10.192.0.0/16
+    Description: The CIDR block for the VPC
+  PrivateSubnetCIDR1:
+    Type: String
+    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
+    Default: 10.192.1.0/24
+    Description: The CIDR block for the private subnet in first AZ
+  PrivateSubnetCIDR2:
+    Type: String
+    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
+    Default: 10.192.2.0/24
+    Description: The CIDR block for the private subnet in second AZ
+  PublicSubnetCIDR1:
+    Type: String
+    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
+    Default: 10.192.10.0/24
+    Description: The CIDR block for the public subnet in first AZ
+  PublicSubnetCIDR2:
+    Type: String
+    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
+    Default: 10.192.11.0/24
+    Description: The CIDR block for the public subnet in second AZ
+  AvailabilityZone1:
+    Description: The AvailabilityZone to use for the first subnet
+    Type: AWS::EC2::AvailabilityZone::Name
+  AvailabilityZone2:
+    Description: The AvailabilityZone to use for the second subnet
+    Type: AWS::EC2::AvailabilityZone::Name
+  ConjurTag:
+    Type: String
+    Default: ''
+    Description: The Conjur Docker image tage
+  DomainName:
+    Type: String
+    Default: dev.conjur.net
+  SubDomain:
+    Type: String
+    Default: myservice
+  HostedZoneId:
+    Type: String
+    Default: Z09256953298LDZ4PEPKG
+    Description: The HostedZoneId of the DomainName provided
+  MinContainers:
+    Type: Number
+    Default: 2
+    Description: Min Conjur instances in cluster
+  MaxContainers:
+    Type: Number
+    Default: 10
+    Description: Max Conjur instances in cluster
+  AutoScalingTargetValue:
+    Type: Number
+    Default: 50
+    Description: Target CPU utilization (%) of container
+Resources:
+  ConjurDataKey:
+    Type: 'AWS::SecretsManager::Secret'
+    Properties:
+      Description: Conjur Data Key
+      Name: conjur_key
+      GenerateSecretString:
+        ExcludePunctuation: true
+  ConjurDBPassword:
+    Type: 'AWS::SecretsManager::Secret'
+    Properties:
+      Description: Conjur DB Password
+      Name: ConjurDBPassword
+      GenerateSecretString:
+        PasswordLength: 12
+        ExcludePunctuation: true
+  PostgresSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      VpcId: !Ref VpcId
+      GroupDescription: Enable access from Conjur
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref ContainerSecurityGroup
+  ContainerSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupName: ContainerSecurityGroup
+      GroupDescription: Security group for NGINX container
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !GetAtt 
+            - LoadBalancerSecurityGroup
+            - GroupId
+      VpcId: !Ref VpcId
+  LoadBalancerSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Security group for LB
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+  Cluster:
+    Type: 'AWS::ECS::Cluster'
+    Properties:
+      ClusterName: conjur-cluster
+  Policy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: conjur-fargate-role
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: '*'
+            Resource: '*'
+      Roles:
+        - !Ref FargateExecutionRole
+  FargateExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: conjur-fargate-role
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
+  AutoScalingRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: service-auto-scaling-role
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - application-autoscaling.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Policies:
+        - PolicyName: service-auto-scaling-policy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ecs:DescribeServices'
+                  - 'ecs:UpdateService'
+                  - 'cloudwatch:PutMetricAlarm'
+                  - 'cloudwatch:DescribeAlarms'
+                  - 'cloudwatch:DeleteAlarms'
+                Resource:
+                  - '*'
+  ScalableTarget:
+    Type: 'AWS::ApplicationAutoScaling::ScalableTarget'
+    Properties:
+      RoleARN: !GetAtt 
+        - AutoScalingRole
+        - Arn
+      ResourceId: !Join 
+        - /
+        - - service
+          - !Ref Cluster
+          - !GetAtt 
+            - Service
+            - Name
+      ServiceNamespace: ecs
+      ScalableDimension: 'ecs:service:DesiredCount'
+      MinCapacity: !Ref MinContainers
+      MaxCapacity: !Ref MaxContainers
+  ScalingPolicy:
+    Type: 'AWS::ApplicationAutoScaling::ScalingPolicy'
+    Properties:
+      PolicyName: conjur-auto-scaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        TargetValue: !Ref AutoScalingTargetValue
+        ScaleInCooldown: 5
+        ScaleOutCooldown: 30
+  TaskDefinition:
+    Type: 'AWS::ECS::TaskDefinition'
+    Properties:
+      Family: conjur-deployment-task
+      Cpu: 4096
+      Memory: 8192
+      NetworkMode: awsvpc
+      ExecutionRoleArn: !Ref FargateExecutionRole
+      ContainerDefinitions:
+        - Name: ConjurContainer
+          Image: cyberark/conjur
+          EntryPoint:
+            - /bin/bash
+            - '-c'
+          Command:
+            - >-
+              /bin/sh -c "export CONJUR_DATA_KEY=$( echo -n $CONJUR_KEY | base64
+              ); export
+              DATABASE_URL='postgres://conjur:$ConjurDBPassword@$DBEndpoint:$DBPort/postgres';
+              conjurctl server & sleep 5; conjurctl account create demo;
+              sleep infinity;"
+          PortMappings:
+            - ContainerPort: 80
+              HostPort: 80
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-group: !Ref LogGroup
+              awslogs-stream-prefix: ecs
+          Environment:
+            - Name: DBEndpoint
+              Value: !GetAtt 
+                - ConjurDB
+                - Endpoint.Address
+            - Name: DBPort
+              Value: !GetAtt 
+                - ConjurDB
+                - Endpoint.Port
+            - Name: RAILS_ENV
+              Value: production
+            - Name: TRUSTED_PROXIES
+              Value: !Sub '${PublicSubnetCIDR1},${PublicSubnetCIDR2}'
+            - Name: WEB_CONCURRENCY
+              Value: 50
+            - Name: RAILS_MAX_THREADS
+              Value: 5
+          Secrets:
+            - Name: CONJUR_KEY
+              ValueFrom: !Ref ConjurDataKey
+            - Name: ConjurDBPassword
+              ValueFrom: !Ref ConjurDBPassword
+      RequiresCompatibilities:
+        - FARGATE
+  Service:
+    Type: 'AWS::ECS::Service'
+    DependsOn:
+      - Listener
+      - Policy
+    Properties:
+      ServiceName: conjur-service
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref TaskDefinition
+      DesiredCount: !Ref MinContainers
+      LaunchType: FARGATE
+      HealthCheckGracePeriodSeconds: 30
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref ContainerSecurityGroup
+          Subnets:
+            - !Ref PublicSubnet1
+            - !Ref PublicSubnet2
+      LoadBalancers:
+        - ContainerName: ConjurContainer
+          ContainerPort: 80
+          TargetGroupArn: !Ref TargetGroup
+  VpcId:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Ref 'AWS::StackName'
+  InternetGatewayAttachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VpcId
+  PrivateSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      CidrBlock: !Ref PrivateSubnetCIDR1
+      VpcId: !Ref VpcId
+      AvailabilityZone: !Ref AvailabilityZone1
+  PrivateSubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      CidrBlock: !Ref PrivateSubnetCIDR2
+      VpcId: !Ref VpcId
+      AvailabilityZone: !Ref AvailabilityZone2
+  DBSubnetGroup:
+    Type: 'AWS::RDS::DBSubnetGroup'
+    Properties:
+      DBSubnetGroupDescription: Postgres subnet
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+  PublicSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VpcId
+      AvailabilityZone: !Ref AvailabilityZone1
+      CidrBlock: !Ref PublicSubnetCIDR1
+      MapPublicIpOnLaunch: true
+  PublicSubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VpcId
+      AvailabilityZone: !Ref AvailabilityZone2
+      CidrBlock: !Ref PublicSubnetCIDR2
+      MapPublicIpOnLaunch: true
+  NatGateway1EIP:
+    Type: 'AWS::EC2::EIP'
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+  NatGateway2EIP:
+    Type: 'AWS::EC2::EIP'
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+  NatGateway1:
+    Type: 'AWS::EC2::NatGateway'
+    Properties:
+      AllocationId: !GetAtt 
+        - NatGateway1EIP
+        - AllocationId
+      SubnetId: !Ref PublicSubnet1
+  NatGateway2:
+    Type: 'AWS::EC2::NatGateway'
+    Properties:
+      AllocationId: !GetAtt 
+        - NatGateway2EIP
+        - AllocationId
+      SubnetId: !Ref PublicSubnet2
+  PublicRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName} Public Routes'
+  DefaultPublicRoute:
+    Type: 'AWS::EC2::Route'
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  PublicSubnet1RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+  PublicSubnet2RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
+  PrivateRouteTable1:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName} Private Routes (AZ1)'
+  DefaultPrivateRoute1:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway1
+  PrivateSubnet1RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      SubnetId: !Ref PrivateSubnet1
+  PrivateRouteTable2:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName} Private Routes (AZ2)'
+  DefaultPrivateRoute2:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway2
+  PrivateSubnet2RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      SubnetId: !Ref PrivateSubnet2
+  TargetGroup:
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+    Properties:
+      HealthCheckIntervalSeconds: 20
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 3
+      TargetType: ip
+      Name: ConjurTG
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 3
+      VpcId: !Ref VpcId
+  LoadBalancer:
+    Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+    Properties:
+      Name: !Ref 'AWS::StackName'
+      SecurityGroups:
+        - !Ref LoadBalancerSecurityGroup
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      Type: application
+  Route53Record:
+    Type: 'AWS::Route53::RecordSet'
+    Properties:
+      AliasTarget:
+        DNSName: !GetAtt 
+          - LoadBalancer
+          - DNSName
+        HostedZoneId: !GetAtt 
+          - LoadBalancer
+          - CanonicalHostedZoneID
+      HostedZoneName: !Sub '${DomainName}.'
+      Name: !Sub '${SubDomain}.${DomainName}'
+      Type: A
+  Certificate:
+    Type: 'AWS::CertificateManager::Certificate'
+    Properties:
+      DomainName: !Sub '${SubDomain}.${DomainName}'
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Sub '${DomainName}.'
+          HostedZoneId: !Ref HostedZoneId
+  Listener:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Ref Certificate
+  LoadBalancerRule:
+    Type: 'AWS::ElasticLoadBalancingV2::ListenerRule'
+    Properties:
+      Actions:
+        - TargetGroupArn: !Ref TargetGroup
+          Type: forward
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - '*'
+      ListenerArn: !Ref Listener
+      Priority: 1
+  ConjurDB:
+    Type: 'AWS::RDS::DBInstance'
+    Properties:
+      DBName: Conjur
+      Engine: postgres
+      EngineVersion: 10.15
+      AllocatedStorage: 20
+      DBInstanceClass: db.t3.medium
+      MasterUsername: conjur
+      MasterUserPassword: !Join 
+        - ''
+        - - '{{resolve:secretsmanager:'
+          - !Ref ConjurDBPassword
+          - '}}'
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - !Ref PostgresSecurityGroup
+  LogGroup:
+    Type: 'AWS::Logs::LogGroup'
+    Properties:
+      LogGroupName: conjur-log-group
