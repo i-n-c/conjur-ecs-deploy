@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+
+# This script generates an empty parameters file that can be used with the aws
+# cli for creating a stack.
+#
+# Usage example:
+# 1) Generate empty params file:
+# $ scripts/generateEmptyParams cloudformation.yml > params_mystack.yml
+#
+# 2) Edit generated file to insert your values:
+# $ vi params_mystack.yml
+#
+# 3) Combine your parameters file with the template to launch a stack:
+# $ aws --profile myprofile \
+#     cloudformation create-stack \
+#       --stack-name mystack \
+#       --template-body file://cloudformation.yml \
+#       --parameters file://params_mystack.json \
+#       --capabilities CAPABILITY_NAMED_IAM
+
+set -euo pipefail
+
+. "$(dirname "${BASH_SOURCE[0]}")/../bash-lib/init"
+
+( which -s jq && which -s yq ) || bl_die "jq & yq are required for this script"
+
+template="${1:-}"
+
+[[ -z "${template}" ]] && bl_die "Usage: ${0} cloudformation_template_path.yml"
+[[ -r "${template}" ]] || bl_die "Cannot read ${template}"
+
+yq r "${template}" --tojson \
+  | jq '.Parameters | keys_unsorted | map({"ParameterKey": ., "ParameterValue":""})'
