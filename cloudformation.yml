@@ -45,6 +45,14 @@ Parameters:
     Type: String
     Default: Z09256953298LDZ4PEPKG
     Description: The HostedZoneId of the DomainName provided
+  ConjurAdminPasswordARN:
+    Type: String
+    Description: >-
+      Amazon Resource Name of an Secrets Manager secret.
+      This secret will be used to set the Conjur admin user's password.
+      Note that the console stores ASM secrets as JSON by default, but this
+      value should refer to a non-JSON raw string secret.
+    AllowedPattern: "^arn:aws:secretsmanager:.*"
   MinContainers:
     Type: Number
     Default: 2
@@ -65,6 +73,14 @@ Resources:
       Name: conjur_key
       GenerateSecretString:
         ExcludePunctuation: true
+  # ConjurAdminPassword:
+  #   Type: 'AWS::SecretsManager::Secret'
+  #   Properties:
+  #     Description: Conjur Admin User Password
+  #     Name: conjur_key
+  #     GenerateSecretString:
+  #       PasswordLength: 120
+  #       RequireEachIncludedType: true
   ConjurDBPassword:
     Type: 'AWS::SecretsManager::Secret'
     Properties:
@@ -205,11 +221,15 @@ Resources:
             - '-c'
           Command:
             - >-
-              /bin/sh -c "export CONJUR_DATA_KEY=$( echo -n $CONJUR_KEY | base64
-              ); export
-              DATABASE_URL='postgres://conjur:$ConjurDBPassword@$DBEndpoint:$DBPort/postgres';
-              conjurctl server & sleep 5; conjurctl account create demo;
-              sleep infinity;"
+                set +o history;
+                history -c;
+                export CONJUR_DATA_KEY=$( echo -n $CONJUR_KEY | base64);
+                export DATABASE_URL="postgres://conjur:${ConjurDBPassword}@${DBEndpoint}:${DBPort}/postgres";
+                conjurctl server &
+                conjurctl wait;
+                AdminApiKey="$(conjurctl account create conjur | awk -F': ' '/^API/{print $2}')";
+                curl --request PUT --data "${ConjurAdminPassword}" --user "admin:${AdminApiKey}" localhost/authn/conjur/password;
+                sleep infinity
           PortMappings:
             - ContainerPort: 80
               HostPort: 80
@@ -241,6 +261,8 @@ Resources:
               ValueFrom: !Ref ConjurDataKey
             - Name: ConjurDBPassword
               ValueFrom: !Ref ConjurDBPassword
+            - Name: ConjurAdminPassword
+              ValueFrom: !Ref ConjurAdminPasswordARN
       RequiresCompatibilities:
         - FARGATE
   Service:
@@ -442,7 +464,7 @@ Resources:
       DomainName: !Sub '${SubDomain}.${DomainName}'
       ValidationMethod: DNS
       DomainValidationOptions:
-        - DomainName: !Sub '${DomainName}.'
+        - DomainName: !Sub '${SubDomain}.${DomainName}'
           HostedZoneId: !Ref HostedZoneId
   Listener:
     Type: 'AWS::ElasticLoadBalancingV2::Listener'
