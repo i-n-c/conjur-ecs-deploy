@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+
+# Load bashlib
+. "$(dirname "${BASH_SOURCE[0]}")/../bash-lib/init"
+
+lint_shell(){
+  bl_info "Running Shell Check"
+  FAILED=""
+  for script in $(bl_find_scripts); do
+      bl_shellcheck_script "${script}"\
+          || FAILED="${FAILED} ${script}"
+  done
+
+  [[ "${FAILED}" == "" ]] || bl_die "These scripts failed shellcheck: ${FAILED}"
+}
+
+lint_cloudformation(){
+  bl_info "Building cloudformation lint image"
+  docker build -f scripts/Dockerfile.lint -t lint scripts
+
+  bl_info "Running YAML lint"
+  docker run \
+    -v "${PWD}:${PWD}" \
+    --rm \
+    --entrypoint yamllint \
+    lint \
+      -c "${PWD}/scripts/yamllint_config.yaml" \
+      "/${PWD}/cloudformation.yml"
+
+  # Requires valid AWS creds so disabled as this will
+  # likely fail when developers run locally
+  # bl_info "Running cloudformation"
+  # aws cloudformation validate-template \
+  #   --template-body "file://cloudformation.yml"
+}
+
+lint_shell
+lint_cloudformation

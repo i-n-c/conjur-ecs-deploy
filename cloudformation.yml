@@ -1,3 +1,4 @@
+---
 AWSTemplateFormatVersion: 2010-09-09
 Parameters:
   VpcCIDR:
@@ -108,7 +109,7 @@ Resources:
         - IpProtocol: tcp
           FromPort: 443
           ToPort: 443
-          SourceSecurityGroupId: !GetAtt 
+          SourceSecurityGroupId: !GetAtt
             - LoadBalancerSecurityGroup
             - GroupId
       VpcId: !Ref VpcId
@@ -179,14 +180,14 @@ Resources:
   ScalableTarget:
     Type: 'AWS::ApplicationAutoScaling::ScalableTarget'
     Properties:
-      RoleARN: !GetAtt 
+      RoleARN: !GetAtt
         - AutoScalingRole
         - Arn
-      ResourceId: !Join 
+      ResourceId: !Join
         - /
         - - service
           - !Ref Cluster
-          - !GetAtt 
+          - !GetAtt
             - Service
             - Name
       ServiceNamespace: ecs
@@ -226,11 +227,13 @@ Resources:
                 export CONJUR_DATA_KEY=$( echo -n $CONJUR_KEY | base64);
                 export DATABASE_URL="postgres://conjur:${ConjurDBPassword}@${DBEndpoint}:${DBPort}/postgres";
                 mkdir -p /puma;
-                openssl req -x509 -newkey rsa:4096 -keyout /puma/key.pem -out /puma/cert.pem -days 365 -subj "/CN=conjur" -nodes;
+                openssl req -x509 -newkey rsa:4096 -keyout /puma/key.pem
+                  -out /puma/cert.pem -days 365 -subj "/CN=conjur" -nodes;
                 conjurctl server --port 443 --bind "ssl://0.0.0.0:443?key=/puma/key.pem\&cert=/puma/cert.pem" &
                 conjurctl wait;
                 AdminApiKey="$(conjurctl account create conjur | awk -F': ' '/^API/{print $2}')";
-                curl -k --request PUT --data "${ConjurAdminPassword}" --user "admin:${AdminApiKey}" https://localhost/authn/conjur/password;
+                curl -k --request PUT --data "${ConjurAdminPassword}"
+                  --user "admin:${AdminApiKey}" https://localhost/authn/conjur/password;
                 sleep infinity
           PortMappings:
             - ContainerPort: 443
@@ -243,11 +246,11 @@ Resources:
               awslogs-stream-prefix: ecs
           Environment:
             - Name: DBEndpoint
-              Value: !GetAtt 
+              Value: !GetAtt
                 - ConjurDB
                 - Endpoint.Address
             - Name: DBPort
-              Value: !GetAtt 
+              Value: !GetAtt
                 - ConjurDB
                 - Endpoint.Port
             - Name: RAILS_ENV
@@ -352,14 +355,14 @@ Resources:
   NatGateway1:
     Type: 'AWS::EC2::NatGateway'
     Properties:
-      AllocationId: !GetAtt 
+      AllocationId: !GetAtt
         - NatGateway1EIP
         - AllocationId
       SubnetId: !Ref PublicSubnet1
   NatGateway2:
     Type: 'AWS::EC2::NatGateway'
     Properties:
-      AllocationId: !GetAtt 
+      AllocationId: !GetAtt
         - NatGateway2EIP
         - AllocationId
       SubnetId: !Ref PublicSubnet2
@@ -451,10 +454,10 @@ Resources:
     Type: 'AWS::Route53::RecordSet'
     Properties:
       AliasTarget:
-        DNSName: !GetAtt 
+        DNSName: !GetAtt
           - LoadBalancer
           - DNSName
-        HostedZoneId: !GetAtt 
+        HostedZoneId: !GetAtt
           - LoadBalancer
           - CanonicalHostedZoneID
       HostedZoneName: !Sub '${DomainName}.'
@@ -500,7 +503,7 @@ Resources:
       AllocatedStorage: 20
       DBInstanceClass: db.t3.medium
       MasterUsername: conjur
-      MasterUserPassword: !Join 
+      MasterUserPassword: !Join
         - ''
         - - '{{resolve:secretsmanager:'
           - !Ref ConjurDBPassword

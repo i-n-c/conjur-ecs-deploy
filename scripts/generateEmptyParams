@@ -22,7 +22,7 @@ set -euo pipefail
 
 . "$(dirname "${BASH_SOURCE[0]}")/../bash-lib/init"
 
-( which -s jq && which -s yq ) || bl_die "jq & yq are required for this script"
+( command -v jq && command -v yq ) >/dev/null || bl_die "jq & yq are required for this script"
 
 template="${1:-}"
 
