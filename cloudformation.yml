@@ -106,8 +106,8 @@ Resources:
       GroupDescription: Security group for NGINX container
       SecurityGroupIngress:
         - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
+          FromPort: 443
+          ToPort: 443
           SourceSecurityGroupId: !GetAtt 
             - LoadBalancerSecurityGroup
             - GroupId
@@ -225,14 +225,16 @@ Resources:
                 history -c;
                 export CONJUR_DATA_KEY=$( echo -n $CONJUR_KEY | base64);
                 export DATABASE_URL="postgres://conjur:${ConjurDBPassword}@${DBEndpoint}:${DBPort}/postgres";
-                conjurctl server &
+                mkdir -p /puma;
+                openssl req -x509 -newkey rsa:4096 -keyout /puma/key.pem -out /puma/cert.pem -days 365 -subj "/CN=conjur" -nodes;
+                conjurctl server --port 443 --bind "ssl://0.0.0.0:443?key=/puma/key.pem\&cert=/puma/cert.pem" &
                 conjurctl wait;
                 AdminApiKey="$(conjurctl account create conjur | awk -F': ' '/^API/{print $2}')";
-                curl --request PUT --data "${ConjurAdminPassword}" --user "admin:${AdminApiKey}" localhost/authn/conjur/password;
+                curl -k --request PUT --data "${ConjurAdminPassword}" --user "admin:${AdminApiKey}" https://localhost/authn/conjur/password;
                 sleep infinity
           PortMappings:
-            - ContainerPort: 80
-              HostPort: 80
+            - ContainerPort: 443
+              HostPort: 443
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -287,7 +289,7 @@ Resources:
             - !Ref PublicSubnet2
       LoadBalancers:
         - ContainerName: ConjurContainer
-          ContainerPort: 80
+          ContainerPort: 443
           TargetGroupArn: !Ref TargetGroup
   VpcId:
     Type: 'AWS::EC2::VPC'
@@ -426,13 +428,13 @@ Resources:
     Properties:
       HealthCheckIntervalSeconds: 20
       HealthCheckPath: /
-      HealthCheckProtocol: HTTP
+      HealthCheckProtocol: HTTPS
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 3
       TargetType: ip
       Name: ConjurTG
-      Port: 80
-      Protocol: HTTP
+      Port: 443
+      Protocol: HTTPS
       UnhealthyThresholdCount: 3
       VpcId: !Ref VpcId
   LoadBalancer:
