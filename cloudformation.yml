@@ -71,7 +71,7 @@ Resources:
     Type: 'AWS::SecretsManager::Secret'
     Properties:
       Description: Conjur Data Key
-      Name: conjur_key
+      Name: !Sub '${AWS::StackName}-conjur_key'
       GenerateSecretString:
         ExcludePunctuation: true
   # ConjurAdminPassword:
@@ -86,7 +86,7 @@ Resources:
     Type: 'AWS::SecretsManager::Secret'
     Properties:
       Description: Conjur DB Password
-      Name: ConjurDBPassword
+      Name: !Sub '${AWS::StackName}-ConjurDBPassword'
       GenerateSecretString:
         PasswordLength: 12
         ExcludePunctuation: true
@@ -94,7 +94,7 @@ Resources:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
       VpcId: !Ref VpcId
-      GroupDescription: Enable access from Conjur
+      GroupDescription: !Sub '${AWS::StackName} Enable access from Conjur'
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 5432
@@ -103,7 +103,7 @@ Resources:
   ContainerSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
-      GroupName: ContainerSecurityGroup
+      GroupName: !Sub '${AWS::StackName}--ContainerSecurityGroup'
       GroupDescription: Security group for NGINX container
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -116,7 +116,7 @@ Resources:
   LoadBalancerSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
-      GroupDescription: Security group for LB
+      GroupDescription: !Sub '${AWS::StackName}- - Security group for LB'
       VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -126,11 +126,11 @@ Resources:
   Cluster:
     Type: 'AWS::ECS::Cluster'
     Properties:
-      ClusterName: conjur-cluster
+      ClusterName: !Sub '${AWS::StackName}-conjur-cluster'
   Policy:
     Type: 'AWS::IAM::Policy'
     Properties:
-      PolicyName: conjur-fargate-role
+      PolicyName: !Sub '${AWS::StackName}-conjur-fargate-role'
       PolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -142,7 +142,7 @@ Resources:
   FargateExecutionRole:
     Type: 'AWS::IAM::Role'
     Properties:
-      RoleName: conjur-fargate-role
+      RoleName: !Sub '${AWS::StackName}-conjur-fargate-role'
       AssumeRolePolicyDocument:
         Statement:
           - Effect: Allow
@@ -154,7 +154,7 @@ Resources:
   AutoScalingRole:
     Type: 'AWS::IAM::Role'
     Properties:
-      RoleName: service-auto-scaling-role
+      RoleName: !Sub '${AWS::StackName}-service-auto-scaling-role'
       AssumeRolePolicyDocument:
         Statement:
           - Effect: Allow
@@ -164,7 +164,7 @@ Resources:
             Action:
               - 'sts:AssumeRole'
       Policies:
-        - PolicyName: service-auto-scaling-policy
+        - PolicyName: !Sub '${AWS::StackName}-service-auto-scaling-policy'
           PolicyDocument:
             Version: 2012-10-17
             Statement:
@@ -197,7 +197,7 @@ Resources:
   ScalingPolicy:
     Type: 'AWS::ApplicationAutoScaling::ScalingPolicy'
     Properties:
-      PolicyName: conjur-auto-scaling-policy
+      PolicyName: !Sub '${AWS::StackName}-conjur-auto-scaling-policy'
       PolicyType: TargetTrackingScaling
       ScalingTargetId: !Ref ScalableTarget
       TargetTrackingScalingPolicyConfiguration:
@@ -215,7 +215,7 @@ Resources:
       NetworkMode: awsvpc
       ExecutionRoleArn: !Ref FargateExecutionRole
       ContainerDefinitions:
-        - Name: ConjurContainer
+        - Name: !Sub '${AWS::StackName}-ConjurContainer'
           Image: cyberark/conjur
           EntryPoint:
             - /bin/bash
@@ -223,17 +223,17 @@ Resources:
           Command:
             - >-
                 set +o history;
+                set -x;
                 history -c;
                 export CONJUR_DATA_KEY=$( echo -n $CONJUR_KEY | base64);
                 export DATABASE_URL="postgres://conjur:${ConjurDBPassword}@${DBEndpoint}:${DBPort}/postgres";
                 mkdir -p /puma;
-                openssl req -x509 -newkey rsa:4096 -keyout /puma/key.pem
-                  -out /puma/cert.pem -days 365 -subj "/CN=conjur" -nodes;
+                openssl req -x509 -newkey rsa:4096 -keyout /puma/key.pem -out /puma/cert.pem -days 365 -subj "/CN=localhost" -nodes;
                 conjurctl server --port 443 --bind "ssl://0.0.0.0:443?key=/puma/key.pem\&cert=/puma/cert.pem" &
-                conjurctl wait;
+                echo "conjurctl wait doesn't support ssl :( so use curl in a loop";
+                until curl -k https://localhost/ |grep -i "your conjur server is running"; do echo "Waiting for conjur to come up"; sleep 1; done;
                 AdminApiKey="$(conjurctl account create conjur | awk -F': ' '/^API/{print $2}')";
-                curl -k --request PUT --data "${ConjurAdminPassword}"
-                  --user "admin:${AdminApiKey}" https://localhost/authn/conjur/password;
+                curl -k --request PUT --data "${ConjurAdminPassword}" --user "admin:${AdminApiKey}" https://localhost/authn/conjur/password;
                 sleep infinity
           PortMappings:
             - ContainerPort: 443
@@ -276,7 +276,7 @@ Resources:
       - Listener
       - Policy
     Properties:
-      ServiceName: conjur-service
+      ServiceName: !Sub '${AWS::StackName}-conjur-service'
       Cluster: !Ref Cluster
       TaskDefinition: !Ref TaskDefinition
       DesiredCount: !Ref MinContainers
@@ -291,7 +291,7 @@ Resources:
             - !Ref PublicSubnet1
             - !Ref PublicSubnet2
       LoadBalancers:
-        - ContainerName: ConjurContainer
+        - ContainerName: !Sub '${AWS::StackName}-ConjurContainer'
           ContainerPort: 443
           TargetGroupArn: !Ref TargetGroup
   VpcId:
@@ -435,7 +435,7 @@ Resources:
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 3
       TargetType: ip
-      Name: ConjurTG
+      Name: !Sub '${AWS::StackName}-ConjurTG'
       Port: 443
       Protocol: HTTPS
       UnhealthyThresholdCount: 3
@@ -497,7 +497,7 @@ Resources:
   ConjurDB:
     Type: 'AWS::RDS::DBInstance'
     Properties:
-      DBName: Conjur
+      DBName: !Ref 'AWS::StackName'
       Engine: postgres
       EngineVersion: 10.15
       AllocatedStorage: 20
@@ -514,4 +514,4 @@ Resources:
   LogGroup:
     Type: 'AWS::Logs::LogGroup'
     Properties:
-      LogGroupName: conjur-log-group
+      LogGroupName: !Sub '${AWS::StackName}-conjur-log-group'
