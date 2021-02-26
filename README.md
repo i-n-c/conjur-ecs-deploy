@@ -40,6 +40,12 @@ Full diagram from cloudformation designer:
 4. Customise the generated parameters file in your editor of choice.
 5. Launch a Stack
 
+    Stack Name pattern: `[a-z][a-z0-9]+`
+
+    Stack Name Description: The stack name must start with a lowercase letter
+    then contain lowercase letters and numbers. This is because its reused
+    in various places with more restrictive character sets (eg rds db name).
+
     ```bash
       $ aws --profile myprofile \
       cloudformation create-stack \

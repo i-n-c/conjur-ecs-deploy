@@ -32,19 +32,17 @@ Parameters:
   AvailabilityZone2:
     Description: The AvailabilityZone to use for the second subnet
     Type: AWS::EC2::AvailabilityZone::Name
-  ConjurTag:
+  ConjurImage:
     Type: String
-    Default: ''
-    Description: The Conjur Docker image tage
+    Default: 'cyberark/conjur:edge'
+    Description: The Conjur Docker image
   DomainName:
     Type: String
-    Default: dev.conjur.net
   SubDomain:
     Type: String
     Default: myservice
   HostedZoneId:
     Type: String
-    Default: Z09256953298LDZ4PEPKG
     Description: The HostedZoneId of the DomainName provided
   ConjurAdminPasswordARN:
     Type: String
@@ -216,14 +214,13 @@ Resources:
       ExecutionRoleArn: !Ref FargateExecutionRole
       ContainerDefinitions:
         - Name: !Sub '${AWS::StackName}-ConjurContainer'
-          Image: cyberark/conjur
+          Image: !Ref ConjurImage
           EntryPoint:
             - /bin/bash
             - '-c'
           Command:
             - >-
                 set +o history;
-                set -x;
                 history -c;
                 export CONJUR_DATA_KEY=$( echo -n $CONJUR_KEY | base64);
                 export DATABASE_URL="postgres://conjur:${ConjurDBPassword}@${DBEndpoint}:${DBPort}/postgres";

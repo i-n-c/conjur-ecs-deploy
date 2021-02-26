@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SCRIPTS_DIR="$(dirname "${BASH_SOURCE[0]}")"
+. "${SCRIPTS_DIR}/../bash-lib/init"
+
+[[ -z "${STACK_NAME}" ]] && bl_die "STACK_NAME must be set before running ${0}"
+TEMPLATE_FILE="${TEMPLATE_FILE:-"${SCRIPTS_DIR}/../cloudformation.yml"}"
+PARAMS_FILE="${PARAMS_FILE:-params.json}"
+
+echo "Creating stack ${STACK_NAME} with parameters file ${PARAMS_FILE}"
+
+echo "Initiating Stack Creation"
+STACK_ARN="$(aws cloudformation create-stack \
+  --stack-name "${STACK_NAME}" \
+  --template-body file://"${TEMPLATE_FILE}" \
+  --parameters file://"${PARAMS_FILE}" \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --output json \
+    | tee create_stack.log \
+    | jq -r .StackId)"
+
+echo "Stack ARN: ${STACK_ARN}"
+
+echo "Waiting for stack creation to complete"
+if aws cloudformation wait stack-create-complete --stack-name "${STACK_NAME}"; then
+  echo "Stack Creation Complete"
+  exit_code=0
+else
+  echo "Stack Creation Failed, recording resources and logs"
+  exit_code=1
+fi
+
+echo "Recoding Stack Events in stack_events.json"
+aws cloudformation describe-stack-events \
+  --output json \
+  --stack-name "${STACK_ARN}" \
+  > stack_events.json \
+  ||:
+
+echo "Recoridng Stack Resources in stack_resources.json"
+aws cloudformation describe-stack-resources \
+  --output json \
+  --stack-name "${STACK_ARN}" \
+  > stack_resources.json \
+  ||:
+
+exit "${exit_code}"
