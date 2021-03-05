@@ -496,11 +496,13 @@ Resources:
       Priority: 1
   ConjurDB:
     Type: 'AWS::RDS::DBInstance'
+    DeletionPolicy: Snapshot
     Properties:
       DBName: !Ref 'AWS::StackName'
       Engine: postgres
       EngineVersion: 10.15
       AllocatedStorage: 20
+      StorageType: gp2
       DBInstanceClass: db.t3.medium
       MasterUsername: conjur
       MasterUserPassword: !Join
@@ -511,6 +513,9 @@ Resources:
       DBSubnetGroupName: !Ref DBSubnetGroup
       VPCSecurityGroups:
         - !Ref PostgresSecurityGroup
+      BackupRetentionPeriod: 14
+      AutoMinorVersionUpgrade: false
+      DeleteAutomatedBackups: false
   LogGroup:
     Type: 'AWS::Logs::LogGroup'
     Properties:
