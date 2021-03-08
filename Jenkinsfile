@@ -16,6 +16,27 @@ pipeline {
         sh 'scripts/lint'
       }
     }
+    stage('Smoke Test'){
+      environment {
+        STACK_NAME = "ecsdeployci${BUILD_NUMBER}"
+      }
+      steps {
+        sh 'summon -f scripts/secrets.yml scripts/prepare'
+        sh 'summon -f scripts/secrets.yml scripts/deploy'
+        // Summon not needed for exercise as it only uses the conjur api
+        // not the AWS api
+        sh 'scripts/exercise'
+      }
+      post {
+        always {
+          archiveArtifacts(artifacts: 'params.json')
+          archiveArtifacts(artifacts: 'admin_password_meta.json', allowEmptyArchive: true)
+          archiveArtifacts(artifacts: 'stack_*.json')
+          archiveArtifacts(artifacts: '*.log', allowEmptyArchive: true)
+          sh 'summon -f scripts/secrets.yml scripts/cleanup'
+        }
+      }
+    }
   }
 
     post {

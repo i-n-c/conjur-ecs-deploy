@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+
+set -uo pipefail
+
+# This script prepares the admin password and parameters files then
+# scripts/deploy should be called to run the actual deploy
+
+SCRIPTS_DIR="$(dirname "${BASH_SOURCE[0]}")"
+. "${SCRIPTS_DIR}/../bash-lib/init"
+
+STACK_NAME="${STACK_NAME:-"conjur-ecs-deploy-${RANDOM}"}"
+CONJUR_IMAGE="${CONJUR_IMAGE:-"cyberark/conjur:edge"}"
+SUB_DOMAIN="${SUB_DOMAIN:-"${STACK_NAME}"}"
+ADMIN_PASSWORD_SECRET_NAME="${STACK_NAME}_adminpassword"
+PARAMS_TEMPLATE="${PARAMS_TEMPLATE:-${SCRIPTS_DIR}/params.template.json}"
+
+# Generate a random string of characters in a specific character class (according to tr)
+# Used to generate conjur admin password if the secret doesn't already exist.
+rand_range() {
+  local range="${1}"
+  local num_chars="${2}"
+  LC_CTYPE=C tr -dc "${range}" </dev/urandom | fold -w "${num_chars}" | head -n1 ||:
+}
+
+# Find or create the conjur admin password secret in asm
+if aws secretsmanager describe-secret \
+    --output json \
+    --secret-id "${ADMIN_PASSWORD_SECRET_NAME}" > admin_password_meta.json; then
+  echo "Secret ${ADMIN_PASSWORD_SECRET_NAME} already exists, not recreating"
+  ADMIN_PASSWORD_ARN="$(jq -r .ARN < admin_password_meta.json )"
+else
+  echo "Generating And Storing Admin Password"
+  # Password Policy: 12-128 characters, 2 uppercase letters, 2 lowercase letters, 1 digit and 1 special character
+  ADMIN_PASSWORD="$(rand_range 'a-z' 10)$(rand_range 'A-Z' 10)$(rand_range '[:punct:]' 10)$(rand_range '0-9' 10)"
+  echo "${ADMIN_PASSWORD}" > conjur_admin_password
+
+  ADMIN_PASSWORD_ARN="$(aws secretsmanager create-secret \
+    --name "${ADMIN_PASSWORD_SECRET_NAME}" \
+    --secret-string "${ADMIN_PASSWORD}" \
+    --output json \
+      | tee create_secret.log \
+      | jq -r .ARN)"
+fi
+
+echo "Templating Parameters File"
+sed \
+  -e "s+%CONJUR_IMAGE%+${CONJUR_IMAGE}+" \
+  -e "s/%SUB_DOMAIN%/${SUB_DOMAIN}/" \
+  -e "s/%ADMIN_PASSWORD_ARN%/${ADMIN_PASSWORD_ARN}/" \
+  -e "s/%DOMAIN_NAME%/${DOMAIN_NAME}/" \
+  -e "s/%DOMAIN_ID%/${DOMAIN_ID}/" \
+  < "${PARAMS_TEMPLATE}" \
+  > params.json
