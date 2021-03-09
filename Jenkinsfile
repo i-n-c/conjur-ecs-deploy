@@ -18,7 +18,7 @@ pipeline {
     }
     stage('Smoke Test'){
       environment {
-        STACK_NAME = "ecsdeployci${BUILD_NUMBER}"
+        STACK_NAME = "ecsdeployci${BRANCH_NAME.replaceAll("[^A-Za-z0-9]", "")[0..5]}${BUILD_NUMBER}"
       }
       steps {
         sh 'summon -f scripts/secrets.yml scripts/prepare'
