@@ -9,6 +9,10 @@ SCRIPTS_DIR="$(dirname "${BASH_SOURCE[0]}")"
 TEMPLATE_FILE="${TEMPLATE_FILE:-"${SCRIPTS_DIR}/../cloudformation.yml"}"
 PARAMS_FILE="${PARAMS_FILE:-params.json}"
 
+wait_for_create(){
+  aws cloudformation wait stack-create-complete --stack-name "${STACK_NAME}"
+}
+
 echo "Creating stack ${STACK_NAME} with parameters file ${PARAMS_FILE}"
 
 echo "Initiating Stack Creation"
@@ -24,7 +28,8 @@ STACK_ARN="$(aws cloudformation create-stack \
 echo "Stack ARN: ${STACK_ARN}"
 
 echo "Waiting for stack creation to complete"
-if aws cloudformation wait stack-create-complete --stack-name "${STACK_NAME}"; then
+# Wait twice incase the initial create takes longer than an hour.
+if wait_for_create || wait_for_create; then
   echo "Stack Creation Complete"
   exit_code=0
 else
