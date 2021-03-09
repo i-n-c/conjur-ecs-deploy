@@ -28,6 +28,9 @@ if aws secretsmanager describe-secret \
     --secret-id "${ADMIN_PASSWORD_SECRET_NAME}" > admin_password_meta.json; then
   echo "Secret ${ADMIN_PASSWORD_SECRET_NAME} already exists, not recreating"
   ADMIN_PASSWORD_ARN="$(jq -r .ARN < admin_password_meta.json )"
+  aws secretsmanager get-secret-value \
+    --secret-id "${ADMIN_PASSWORD_ARN}" \
+    > conjur_admin_password
 else
   echo "Generating And Storing Admin Password"
   # Password Policy: 12-128 characters, 2 uppercase letters, 2 lowercase letters, 1 digit and 1 special character
