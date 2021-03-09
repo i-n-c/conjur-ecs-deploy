@@ -9,6 +9,10 @@ SCRIPTS_DIR="$(dirname "${BASH_SOURCE[0]}")"
 TEMPLATE_FILE="${TEMPLATE_FILE:-"${SCRIPTS_DIR}/../cloudformation.yml"}"
 PARAMS_FILE="${PARAMS_FILE:-params.json}"
 
+wait_for_update(){
+  aws cloudformation wait stack-update-complete --stack-name "${STACK_NAME}"
+}
+
 echo "Updating stack ${STACK_NAME} with parameters file ${PARAMS_FILE}"
 
 echo "Initiating Stack Update"
@@ -21,7 +25,8 @@ aws cloudformation update-stack \
     | tee update_stack.log
 
 echo "Waiting for stack update to complete"
-if aws cloudformation wait stack-update-complete --stack-name "${STACK_NAME}"; then
+# Wait twice incase the first times out.
+if wait_for_update || wait_for_update; then
   echo "Stack Update Complete"
   exit_code=0
 else
