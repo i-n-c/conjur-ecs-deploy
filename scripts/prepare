@@ -22,6 +22,13 @@ rand_range() {
   LC_CTYPE=C tr -dc "${range}" </dev/urandom | fold -w "${num_chars}" | head -n1 ||:
 }
 
+echo "Resolving Docker Image to SHA"
+ORIGINAL_CONJUR_IMAGE="${CONJUR_IMAGE}"
+docker pull "${CONJUR_IMAGE}"
+CONJUR_IMAGE="$(docker inspect --format='{{index .RepoDigests 0}}' "${CONJUR_IMAGE}")"
+echo "${ORIGINAL_CONJUR_IMAGE} resolved to ${CONJUR_IMAGE}"
+echo "${CONJUR_IMAGE}" > conjur_image
+
 # Find or create the conjur admin password secret in asm
 if aws secretsmanager describe-secret \
     --output json \
