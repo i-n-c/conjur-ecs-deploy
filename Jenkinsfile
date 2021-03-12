@@ -23,9 +23,7 @@ pipeline {
       steps {
         sh 'summon -f scripts/secrets.yml scripts/prepare'
         sh 'summon -f scripts/secrets.yml scripts/deploy'
-        // Summon not needed for exercise as it only uses the conjur api
-        // not the AWS api
-        sh 'scripts/exercise'
+        sh 'summon -f scripts/secrets.yml scripts/exercise'
       }
       post {
         always {

@@ -22,6 +22,12 @@ rand_range() {
   LC_CTYPE=C tr -dc "${range}" </dev/urandom | fold -w "${num_chars}" | head -n1 ||:
 }
 
+get_admin_password_metadata(){
+  aws secretsmanager describe-secret \
+    --output json \
+    --secret-id "${ADMIN_PASSWORD_SECRET_NAME}" | tee admin_password_meta.json
+}
+
 echo "Resolving Docker Image to SHA"
 ORIGINAL_CONJUR_IMAGE="${CONJUR_IMAGE}"
 docker pull "${CONJUR_IMAGE}"
@@ -30,27 +36,23 @@ echo "${ORIGINAL_CONJUR_IMAGE} resolved to ${CONJUR_IMAGE}"
 echo "${CONJUR_IMAGE}" > conjur_image
 
 # Find or create the conjur admin password secret in asm
-if aws secretsmanager describe-secret \
-    --output json \
-    --secret-id "${ADMIN_PASSWORD_SECRET_NAME}" > admin_password_meta.json; then
+if get_admin_password_metadata; then
   echo "Secret ${ADMIN_PASSWORD_SECRET_NAME} already exists, not recreating"
-  ADMIN_PASSWORD_ARN="$(jq -r .ARN < admin_password_meta.json )"
-  aws secretsmanager get-secret-value \
-    --secret-id "${ADMIN_PASSWORD_ARN}" \
-    > conjur_admin_password
 else
   echo "Generating And Storing Admin Password"
   # Password Policy: 12-128 characters, 2 uppercase letters, 2 lowercase letters, 1 digit and 1 special character
   ADMIN_PASSWORD="$(rand_range 'a-z' 10)$(rand_range 'A-Z' 10)$(rand_range '[:punct:]' 10)$(rand_range '0-9' 10)"
-  echo "${ADMIN_PASSWORD}" > conjur_admin_password
-
-  ADMIN_PASSWORD_ARN="$(aws secretsmanager create-secret \
+  aws secretsmanager create-secret \
     --name "${ADMIN_PASSWORD_SECRET_NAME}" \
     --secret-string "${ADMIN_PASSWORD}" \
     --output json \
-      | tee create_secret.log \
-      | jq -r .ARN)"
+      | tee create_secret.log
+  unset ADMIN_PASSWORD
+  get_admin_password_metadata
 fi
+# At this point the admin password exists in ASM and metadata has been written
+# to disk so extract the ARN.
+ADMIN_PASSWORD_ARN="$(jq -r .ARN < admin_password_meta.json )"
 
 echo "Templating Parameters File"
 sed \
