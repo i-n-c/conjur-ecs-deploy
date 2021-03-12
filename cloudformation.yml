@@ -133,8 +133,12 @@ Resources:
         Version: 2012-10-17
         Statement:
           - Effect: Allow
-            Action: '*'
-            Resource: '*'
+            Action:
+              - 'secretsmanager:GetSecretValue'
+            Resource:
+              - !Ref ConjurAdminPasswordARN
+              - !Ref ConjurDBPassword
+              - !Ref ConjurDataKey
       Roles:
         - !Ref FargateExecutionRole
   FargateExecutionRole:
