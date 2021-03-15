@@ -12,6 +12,7 @@ TEST_VAR_VALUE_1="$(uuidgen)"
 TEST_VAR_VALUE_2="$(uuidgen)"
 DOMAIN_NAME="${DOMAIN_NAME:-ci.conjur.net}" # Doesn't include this stack's subdomain
 ADMIN_PASSWORD_METADATA_FILE="admin_password_meta.json"
+TEST_POLICY_FILE="${SCRIPTS_DIR}/test_policy.yml"
 
 # Functions
 
@@ -76,7 +77,7 @@ fi
 if dconjur list variables |grep -q "${TEST_VAR}"; then
   echo "Policy already loaded, skipping policy load"
 else
- dconjur policy load root scripts/test_policy.yml
+ dconjur policy load root "${TEST_POLICY_FILE}"
   echo "Test Policy Loaded"
 fi
 
