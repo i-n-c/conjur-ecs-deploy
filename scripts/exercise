@@ -11,16 +11,7 @@ TEST_VAR="TestPolicy/TestVariable"
 TEST_VAR_VALUE_1="$(uuidgen)"
 TEST_VAR_VALUE_2="$(uuidgen)"
 DOMAIN_NAME="${DOMAIN_NAME:-ci.conjur.net}" # Doesn't include this stack's subdomain
-
-# Verify Inputs
-if [[ -z "${STACK_NAME}" ]]; then
-  bl_die "STACK_NAME must be set before running ${0}"
-fi
-if [[ ! -r conjur_admin_password ]];  then
-  bl_die "Cannot open file conjur_admin_password"
-fi
-
-ADMIN_PASSWORD="$(< conjur_admin_password)"
+ADMIN_PASSWORD_METADATA_FILE="admin_password_meta.json"
 
 # Functions
 
@@ -46,7 +37,27 @@ check_variable_value(){
   fi
 }
 
+# Retrieve conjur admin password from AWS Secrets Manager
+get_admin_password(){
+  local ADMIN_PASSWORD_ARN
+  # This file created by scripts/prepare
+  ADMIN_PASSWORD_ARN="$(jq -r .ARN < "${ADMIN_PASSWORD_METADATA_FILE}" )"
+  aws secretsmanager get-secret-value \
+    --secret-id "${ADMIN_PASSWORD_ARN}" \
+    --output json \
+    | jq -r '.SecretString'
+}
+
 # Main flow
+
+# Verify Inputs
+if [[ -z "${STACK_NAME}" ]]; then
+  bl_die "STACK_NAME must be set before running ${0}"
+fi
+if [[ ! -r "${ADMIN_PASSWORD_METADATA_FILE}" ]];  then
+  bl_die "Cannot open file ${ADMIN_PASSWORD_METADATA_FILE}, did you run scripts/prepare?"
+fi
+
 mkdir -p cli_root
 
 # Configure CLI if not already configured.
@@ -54,7 +65,7 @@ if [[ ! -e cli_root/conjur-conjur.pem ]]; then
   echo -e "yes\nconjur" |dconjur init -u "https://${STACK_NAME}.${DOMAIN_NAME}"
   set +x +o history
   echo "dconjur authn login -u admin -p \"***\""
-  dconjur authn login -u admin -p "${ADMIN_PASSWORD}"
+  dconjur authn login -u admin -p "$(get_admin_password)"
   set -x
   echo "Conjur CLI Configured"
 else
