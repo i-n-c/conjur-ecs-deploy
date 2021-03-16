@@ -48,7 +48,7 @@ else
     --output json \
       | tee create_secret.log
   unset ADMIN_PASSWORD
-  get_admin_password_metadata
+  bl_retry_constant 5 10 get_admin_password_metadata
 fi
 # At this point the admin password exists in ASM and metadata has been written
 # to disk so extract the ARN.
