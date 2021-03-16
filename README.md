@@ -11,6 +11,9 @@ Conjur Open Source is deployed in containers within ECS (Elastic Container Servi
 Full diagram from cloudformation designer:
 ![AWS Architecture Diagram](images/cloudformation-designer.png)
 
+## IAM Policy
+The user deploying the stack must have the permissions specified in [deployer_iam_policy.yml](deployer_iam_policy.yml)
+
 ## Usage Instructions
 
 1. Clone the repo:
