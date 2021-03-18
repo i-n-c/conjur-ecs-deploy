@@ -11,7 +11,7 @@ SCRIPTS_DIR="$(dirname "${BASH_SOURCE[0]}")"
 STACK_NAME="${STACK_NAME:-"conjur-ecs-deploy-${RANDOM}"}"
 CONJUR_IMAGE="${CONJUR_IMAGE:-"cyberark/conjur:edge"}"
 SUB_DOMAIN="${SUB_DOMAIN:-"${STACK_NAME}"}"
-ADMIN_PASSWORD_SECRET_NAME="${STACK_NAME}_adminpassword"
+ADMIN_PASSWORD_SECRET_NAME="${ADMIN_PASSWORD_SECRET_NAME:-${STACK_NAME}_adminpassword}"
 PARAMS_TEMPLATE="${PARAMS_TEMPLATE:-${SCRIPTS_DIR}/params.template.json}"
 
 # Generate a random string of characters in a specific character class (according to tr)
