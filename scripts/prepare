@@ -12,6 +12,7 @@ STACK_NAME="${STACK_NAME:-"conjur-ecs-deploy-${RANDOM}"}"
 CONJUR_IMAGE="${CONJUR_IMAGE:-"cyberark/conjur:edge"}"
 SUB_DOMAIN="${SUB_DOMAIN:-"${STACK_NAME}"}"
 ADMIN_PASSWORD_SECRET_NAME="${ADMIN_PASSWORD_SECRET_NAME:-${STACK_NAME}_adminpassword}"
+ADMIN_PASSWORD_METADATA_FILE="admin_password_meta.json"
 PARAMS_TEMPLATE="${PARAMS_TEMPLATE:-${SCRIPTS_DIR}/params.template.json}"
 
 # Generate a random string of characters in a specific character class (according to tr)
@@ -25,7 +26,7 @@ rand_range() {
 get_admin_password_metadata(){
   aws secretsmanager describe-secret \
     --output json \
-    --secret-id "${ADMIN_PASSWORD_SECRET_NAME}" | tee admin_password_meta.json
+    --secret-id "${ADMIN_PASSWORD_SECRET_NAME}" | tee "${ADMIN_PASSWORD_METADATA_FILE}"
 }
 
 echo "Resolving Docker Image to SHA"
@@ -37,7 +38,13 @@ echo "${CONJUR_IMAGE}" > conjur_image
 
 # Find or create the conjur admin password secret in asm
 if get_admin_password_metadata; then
-  echo "Secret ${ADMIN_PASSWORD_SECRET_NAME} already exists, not recreating"
+  if grep -q "DeletedDate" "${ADMIN_PASSWORD_METADATA_FILE}"; then
+    echo "${ADMIN_PASSWORD_SECRET_NAME} exists but is pending deletion so not readable. "
+    echo "Please restore the secret, or specify a different secret name"
+    exit 1
+  else
+    echo "Secret ${ADMIN_PASSWORD_SECRET_NAME} already exists, not recreating"
+  fi
 else
   echo "Generating And Storing Admin Password"
   # Password Policy: 12-128 characters, 2 uppercase letters, 2 lowercase letters, 1 digit and 1 special character
@@ -52,7 +59,7 @@ else
 fi
 # At this point the admin password exists in ASM and metadata has been written
 # to disk so extract the ARN.
-ADMIN_PASSWORD_ARN="$(jq -r .ARN < admin_password_meta.json )"
+ADMIN_PASSWORD_ARN="$(jq -r .ARN < "${ADMIN_PASSWORD_METADATA_FILE}" )"
 
 echo "Templating Parameters File"
 sed \
