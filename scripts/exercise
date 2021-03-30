@@ -6,72 +6,16 @@ set -euo pipefail
 SCRIPTS_DIR="$(dirname "${BASH_SOURCE[0]}")"
 . "${SCRIPTS_DIR}/../bash-lib/init"
 set -x # After bash-lib init
-CLI_IMAGE="${CLI_IMAGE:-"cyberark/conjur-cli:5"}"
 TEST_VAR="TestPolicy/TestVariable"
 TEST_VAR_VALUE_1="$(uuidgen)"
 TEST_VAR_VALUE_2="$(uuidgen)"
-DOMAIN_NAME="${DOMAIN_NAME:-ci.conjur.net}" # Doesn't include this stack's subdomain
-ADMIN_PASSWORD_METADATA_FILE="admin_password_meta.json"
-TEST_POLICY_FILE="${SCRIPTS_DIR}/test_policy.yml"
 
-# Functions
-
-# Run conjur cli command in docker
-dconjur(){
-  docker run --rm -i \
-    --volume="${PWD}:/workspace" \
-    --volume="${PWD}/cli_root:/root" \
-    --workdir="/workspace" \
-    "${CLI_IMAGE}" \
-    "${@}"
-}
-
-check_variable_value(){
-  conjur_var="${1}"
-  expected_value="${2}"
-  retrieved_value="$(dconjur variable value "${conjur_var}")"
-  if [[ "${retrieved_value}" != "${expected_value}" ]]; then
-    bl_fail "Retrieved value of ${conjur_var} (${retrieved_value}) \
-      does not match the value it was set to (${expected_value})"
-  else
-    echo "Verified the expected value of ${TEST_VAR}: (${expected_value})"
-  fi
-}
-
-# Retrieve conjur admin password from AWS Secrets Manager
-get_admin_password(){
-  local ADMIN_PASSWORD_ARN
-  # This file created by scripts/prepare
-  ADMIN_PASSWORD_ARN="$(jq -r .ARN < "${ADMIN_PASSWORD_METADATA_FILE}" )"
-  aws secretsmanager get-secret-value \
-    --secret-id "${ADMIN_PASSWORD_ARN}" \
-    --output json \
-    | jq -r '.SecretString'
-}
+# Relative because it will be used within docker
+TEST_POLICY_FILE="scripts/test_policy.yml"
 
 # Main flow
 
-# Verify Inputs
-if [[ -z "${STACK_NAME}" ]]; then
-  bl_die "STACK_NAME must be set before running ${0}"
-fi
-if [[ ! -r "${ADMIN_PASSWORD_METADATA_FILE}" ]];  then
-  bl_die "Cannot open file ${ADMIN_PASSWORD_METADATA_FILE}, did you run scripts/prepare?"
-fi
-
-mkdir -p cli_root
-
-# Configure CLI if not already configured.
-if [[ ! -e cli_root/conjur-conjur.pem ]]; then
-  echo -e "yes\nconjur" |dconjur init -u "https://${STACK_NAME}.${DOMAIN_NAME}"
-  set +x +o history
-  echo "dconjur authn login -u admin -p \"***\""
-  dconjur authn login -u admin -p "$(get_admin_password)"
-  set -x
-  echo "Conjur CLI Configured"
-else
-  echo "Skipping Conjur CLI configuration as certificate is already present"
-fi
+. "${SCRIPTS_DIR}/conjur_login"
 
 # Load Policy
 if dconjur list variables |grep -q "${TEST_VAR}"; then
