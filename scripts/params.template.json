@@ -45,15 +45,15 @@
   },
   {
     "ParameterKey": "MinContainers",
-    "ParameterValue": "1"
-  },
-  {
-    "ParameterKey": "MaxContainers",
     "ParameterValue": "2"
   },
   {
+    "ParameterKey": "MaxContainers",
+    "ParameterValue": "6"
+  },
+  {
     "ParameterKey": "AutoScalingTargetValue",
-    "ParameterValue": "75"
+    "ParameterValue": "50"
   },
   {
     "ParameterKey": "ConjurAdminPasswordARN",
