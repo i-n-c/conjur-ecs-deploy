@@ -12,8 +12,17 @@ if [[ -z "${STACK_NAME}" ]]; then
   bl_die "STACK_NAME must be set before running ${0}"
 fi
 
+STACK_ARN="$(aws cloudformation describe-stacks \
+  --stack-name "${STACK_NAME}" \
+  --output json \
+  | jq -r '.Stacks[0].StackId')"
+echo "Resolved stack name ${STACK_NAME} to ARN: ${STACK_ARN}"
+
 echo "Removing admin password secret"
 aws secretsmanager delete-secret --secret-id "${ADMIN_PASSWORD_SECRET_NAME}"
+
+echo "Storing stack resources"
+aws cloudformation describe-stack-resources --stack-name "${STACK_NAME}" --output json > stack_resources.json
 
 echo "Initiating Stack Deletion: ${STACK_NAME}"
 aws cloudformation delete-stack \
@@ -24,3 +33,26 @@ aws cloudformation wait stack-delete-complete \
   --stack-name "${STACK_NAME}"
 
 echo "Stack deletion complete: ${STACK_NAME}"
+
+echo "Removing leftover secrets"
+
+
+if [[ -n "${STACK_ARN}" ]]; then
+  aws secretsmanager list-secrets \
+    --output json \
+    | jq -r '.SecretList[] | select(.Tags)|select(.Tags[].Value == "'"${STACK_ARN}"'").ARN' \
+    | while read -r secret_arn; do \
+      echo "Removing Secret ${secret_arn}"; \
+      aws secretsmanager delete-secret --secret-id "${secret_arn}"; \
+    done
+fi
+
+echo "Removing leftover snapshots"
+
+DB_ID="$(jq -r '.StackResources[] |select(.ResourceType == "AWS::RDS::DBInstance").PhysicalResourceId' stack_resources.json)"
+aws rds describe-db-snapshots --db-instance-identifier "${DB_ID}" --output json \
+  | jq -r '.DBSnapshots[] | select(.SnapshotType != "automated").DBSnapshotIdentifier' \
+  | while read -r SNAPSHOT_ID; do \
+    echo "Removing DB snapshot ${SNAPSHOT_ID}"; \
+    aws rds delete-db-snapshot --db-snapshot-identifier "${SNAPSHOT_ID}" ||true ; \
+  done
