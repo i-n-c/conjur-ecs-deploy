@@ -552,6 +552,8 @@ Resources:
       BackupRetentionPeriod: 14
       AutoMinorVersionUpgrade: false
       DeleteAutomatedBackups: false
+      MultiAZ: true
+      EnablePerformanceInsights: true
   LogGroup:
     Type: 'AWS::Logs::LogGroup'
     Properties:
