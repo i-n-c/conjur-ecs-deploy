@@ -48,7 +48,7 @@ if get_admin_password_metadata; then
 else
   echo "Generating And Storing Admin Password"
   # Password Policy: 12-128 characters, 2 uppercase letters, 2 lowercase letters, 1 digit and 1 special character
-  ADMIN_PASSWORD="$(rand_range 'a-z' 10)$(rand_range 'A-Z' 10)$(rand_range '[:punct:]' 10)$(rand_range '0-9' 10)"
+  ADMIN_PASSWORD="$(rand_range 'a-z' 10)$(rand_range 'A-Z' 10)$(rand_range '[#$%&()+,\-./:;<=>?@^_{}~]' 10)$(rand_range '0-9' 10)"
   aws secretsmanager create-secret \
     --name "${ADMIN_PASSWORD_SECRET_NAME}" \
     --secret-string "${ADMIN_PASSWORD}" \
