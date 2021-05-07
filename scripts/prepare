@@ -54,6 +54,8 @@ else
     --secret-string "${ADMIN_PASSWORD}" \
     --output json \
       | tee create_secret.log
+  #TODO: remove me
+  echo "Conjur Admin Password (only printed for debugging conjurctl): ${ADMIN_PASSWORD}"
   unset ADMIN_PASSWORD
   bl_retry_constant 5 10 get_admin_password_metadata
 fi
