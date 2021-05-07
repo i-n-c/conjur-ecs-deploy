@@ -247,8 +247,8 @@ Resources:
     Type: 'AWS::ECS::TaskDefinition'
     Properties:
       Family: conjur-deployment-task
-      Cpu: !ref ContainerCPU
-      Memory: !ref ContainerMemory
+      Cpu: !Ref ContainerCPU
+      Memory: !Ref ContainerMemory
       NetworkMode: awsvpc
       ExecutionRoleArn: !Ref FargateExecutionRole
       ContainerDefinitions:
@@ -533,11 +533,12 @@ Resources:
   ConjurDB:
     Type: 'AWS::RDS::DBInstance'
     DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
     Properties:
       DBName: !Ref 'AWS::StackName'
       Engine: postgres
-      EngineVersion: 10.15
-      AllocatedStorage: 20
+      EngineVersion: "10.15"
+      AllocatedStorage: "20"
       StorageType: gp2
       DBInstanceClass: db.t3.medium
       MasterUsername: conjur
