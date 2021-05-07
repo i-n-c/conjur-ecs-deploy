@@ -17,6 +17,11 @@ TEST_POLICY_FILE="scripts/test_policy.yml"
 
 # Main flow
 
+export LOG_GROUP="${STACK_NAME}-conjur-log-group"
+"${SCRIPTS_DIR}"/tail_ecs_logs &
+LOG_TAIL_PID="${!}"
+trap 'kill -9 ${LOG_TAIL_PID} || true' EXIT
+
 . "${SCRIPTS_DIR}/conjur_login"
 
 # Load Policy
@@ -43,6 +48,12 @@ dconjur variable values add "${TEST_VAR}" "${TEST_VAR_VALUE_2}"
 check_variable_value "${TEST_VAR}" "${TEST_VAR_VALUE_2}"
 
 echo "Starting Reliability Tests"
+
+# kill the log tailer before reliability testing to avoid hitting
+# log api rate limits
+kill "${LOG_TAIL_PID}" || true
+echo "Checking that ECS log tailer process has stopped:"
+ps "${LOG_TAIL_PID}" || true
 
 # Build apache bench container
 docker build -f "${SCRIPTS_DIR}/Dockerfile.ab" -t ab "${SCRIPTS_DIR}"

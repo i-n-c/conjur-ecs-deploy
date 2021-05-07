@@ -13,6 +13,11 @@ wait_for_create(){
   aws cloudformation wait stack-create-complete --stack-name "${STACK_NAME}"
 }
 
+export LOG_GROUP="${STACK_NAME}-conjur-log-group"
+"${SCRIPTS_DIR}"/tail_ecs_logs &
+LOG_TAIL_PID="${!}"
+trap 'kill -9 ${LOG_TAIL_PID} || true' EXIT
+
 echo "Creating stack ${STACK_NAME} with parameters file ${PARAMS_FILE}"
 
 echo "Initiating Stack Creation"
@@ -50,5 +55,9 @@ aws cloudformation describe-stack-resources \
   --stack-name "${STACK_ARN}" \
   > stack_resources.json \
   ||:
+
+kill "${LOG_TAIL_PID}" || true
+echo "Checking for log tail pid:"
+ps "${LOG_TAIL_PID}" || true
 
 exit "${exit_code}"
