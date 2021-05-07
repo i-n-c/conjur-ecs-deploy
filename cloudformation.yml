@@ -41,7 +41,7 @@ Parameters:
   ConjurImage:
     Type: String
     Default: 'cyberark/conjur:edge'
-    Description: The Conjur Docker image. It must be v1.11.5+.
+    Description: The Conjur Docker image
   DomainName:
     Type: String
   SubDomain:
@@ -284,15 +284,15 @@ Resources:
             - >-
                 set +o history;
                 history -c;
-                set -ev;
                 export CONJUR_DATA_KEY=$( echo -n $CONJUR_KEY | base64);
                 export DATABASE_URL="postgres://conjur:${ConjurDBPassword}@${DBEndpoint}:${DBPort}/postgres";
                 mkdir -p /puma;
                 openssl req -x509 -newkey rsa:4096 -keyout /puma/key.pem -out /puma/cert.pem -days 365 -subj "/CN=localhost" -nodes;
-                conjurctl server --port 443 --bind "ssl://0.0.0.0:443?key=/puma/key.pem&cert=/puma/cert.pem" &
+                conjurctl server --port 443 --bind "ssl://0.0.0.0:443?key=/puma/key.pem\&cert=/puma/cert.pem" &
                 echo "conjurctl wait doesn't support ssl :( so use curl in a loop";
                 until curl -k https://localhost/ |grep -i "your conjur server is running"; do echo "Waiting for conjur to come up"; sleep 1; done;
-                echo -n "${ConjurAdminPassword}" | conjurctl account create --name conjur --password-from-stdin;
+                AdminApiKey="$(conjurctl account create conjur | awk -F': ' '/^API/{print $2}')";
+                curl -k --request PUT --data "${ConjurAdminPassword}" --user "admin:${AdminApiKey}" https://localhost/authn/conjur/password;
                 sleep infinity
           PortMappings:
             - ContainerPort: 443
