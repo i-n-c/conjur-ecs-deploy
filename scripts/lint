@@ -27,6 +27,10 @@ lint_cloudformation(){
       -c "${PWD}/scripts/yamllint_config.yaml" \
       "/${PWD}/cloudformation.yml"
 
+
+  docker build -f cfn-python-lint/Dockerfile -t cfn-python-lint:latest cfn-python-lint/
+  docker run --rm -v "$(pwd):/data" cfn-python-lint:latest /data/cloudformation.yml
+
   # Requires valid AWS creds so disabled as this will
   # likely fail when developers run locally
   # bl_info "Running cloudformation"
