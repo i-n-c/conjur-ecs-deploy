@@ -1,5 +1,11 @@
 ---
 AWSTemplateFormatVersion: 2010-09-09
+Metadata:
+  cfn-lint:
+    config:
+      ignore_checks:
+        - E3008
+        - E1029
 Parameters:
   VpcCIDR:
     Type: String
@@ -63,9 +69,36 @@ Parameters:
   AutoScalingTargetValue:
     Type: Number
     Default: 50
-    Description: Target CPU utilization (%) of container
+    Description: Target value for metric specified in AutoScalingMetric
+  AutoScalingMetric:
+    Type: String
+    Default: ECSServiceAverageCPUUtilization
+    Description: Metric to track when scaling containers up/down
+    AllowedValues:
+      - ECSServiceAverageCPUUtilization
+      - ECSServiceAverageMemoryUtilization
+      - ALBRequestCountPerTarget
+  PumaThreads:
+    Type: Number
+    Default: 5
+    Description: Number of threads per puma process
+  ContainerProcesses:
+    Type: Number
+    Default: 50
+    Description: Number of puma processes per container
+  ContainerCPU:
+    Type: Number
+    Default: 4096
+    Description: CPU units to allocate to each container
+  ContainerMemory:
+    Type: Number
+    Default: 8192
+    Description: Memory units to allocate to each container
+
 Resources:
   ConjurDataKey:
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Type: 'AWS::SecretsManager::Secret'
     Properties:
       Description: Conjur Data Key
@@ -81,6 +114,8 @@ Resources:
   #       PasswordLength: 120
   #       RequireEachIncludedType: true
   ConjurDBPassword:
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Type: 'AWS::SecretsManager::Secret'
     Properties:
       Description: Conjur DB Password
@@ -204,7 +239,7 @@ Resources:
       ScalingTargetId: !Ref ScalableTarget
       TargetTrackingScalingPolicyConfiguration:
         PredefinedMetricSpecification:
-          PredefinedMetricType: ECSServiceAverageCPUUtilization
+          PredefinedMetricType: !Ref AutoScalingMetric
         TargetValue: !Ref AutoScalingTargetValue
         ScaleInCooldown: 5
         ScaleOutCooldown: 30
@@ -212,8 +247,8 @@ Resources:
     Type: 'AWS::ECS::TaskDefinition'
     Properties:
       Family: conjur-deployment-task
-      Cpu: 4096
-      Memory: 8192
+      Cpu: !ref ContainerCPU
+      Memory: !ref ContainerMemory
       NetworkMode: awsvpc
       ExecutionRoleArn: !Ref FargateExecutionRole
       ContainerDefinitions:
@@ -259,9 +294,9 @@ Resources:
             - Name: TRUSTED_PROXIES
               Value: !Sub '${PublicSubnetCIDR1},${PublicSubnetCIDR2}'
             - Name: WEB_CONCURRENCY
-              Value: 50
+              Value: !Ref ContainerProcesses
             - Name: RAILS_MAX_THREADS
-              Value: 5
+              Value: !Ref PumaThreads
           Secrets:
             - Name: CONJUR_KEY
               ValueFrom: !Ref ConjurDataKey
