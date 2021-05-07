@@ -582,3 +582,4 @@ Resources:
     Type: 'AWS::Logs::LogGroup'
     Properties:
       LogGroupName: !Sub '${AWS::StackName}-conjur-log-group'
+      RetentionInDays: 90
