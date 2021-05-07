@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+
+set -uo pipefail
+
+LOG_GROUP="${LOG_GROUP}"
+
+trap 'echo "$(date) ECS Log tailer shutdown" >> ecs.log' EXIT
+
+echo "$(date) ECS log tailer starting" >> ecs.log
+while true; do
+    aws logs tail "${LOG_GROUP}" --since 2m --follow &>> ecs.log
+    echo "Log Group ${LOG_GROUP} not found, waiting." >> ecs.log
+    sleep 60
+done
