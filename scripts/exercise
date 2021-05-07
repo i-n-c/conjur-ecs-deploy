@@ -9,6 +9,8 @@ set -x # After bash-lib init
 TEST_VAR="TestPolicy/TestVariable"
 TEST_VAR_VALUE_1="$(uuidgen)"
 TEST_VAR_VALUE_2="$(uuidgen)"
+BASE_URL="https://${STACK_NAME}.${DOMAIN_NAME}"
+AB_REQUESTS="500"
 
 # Relative because it will be used within docker
 TEST_POLICY_FILE="scripts/test_policy.yml"
@@ -39,5 +41,50 @@ check_variable_value "${TEST_VAR}" "${TEST_VAR_VALUE_1}"
 # Update vairable to a new value and read it back
 dconjur variable values add "${TEST_VAR}" "${TEST_VAR_VALUE_2}"
 check_variable_value "${TEST_VAR}" "${TEST_VAR_VALUE_2}"
+
+echo "Starting Reliability Tests"
+
+# Build apache bench container
+docker build -f "${SCRIPTS_DIR}/Dockerfile.ab" -t ab "${SCRIPTS_DIR}"
+ab(){
+  concurrency="${1}"
+  name="${2}"
+  shift; shift
+  log="ab_${concurrency}_${name}.log"
+  docker run\
+    --rm \
+    --volume "${PWD}:${PWD}" \
+    --workdir "${PWD}" \
+    ab \
+    -l \
+    -n "${AB_REQUESTS}" \
+    -c "${concurrency}" \
+    "${@}" \
+    | tee "${log}"
+  grep '^Failed requests:\s*0' "${log}"
+  ! grep '^Non-2xx responses:' "${log}"
+}
+
+echo "Testing serial requests to root url"
+ab 1 root "${BASE_URL}/"
+
+echo "Testing parallel requests to root url"
+ab 2 root "${BASE_URL}/"
+
+echo "Testing serial variable reads"
+ab 1 "read" -H "$(dconjur authn authenticate -H)" "${BASE_URL}/secrets/conjur/variable/${TEST_VAR}"
+
+echo "Testing parallel variable reads"
+ab 2 "read" -H "$(dconjur authn authenticate -H)" "${BASE_URL}/secrets/conjur/variable/${TEST_VAR}"
+
+echo "Testing serial write"
+date > postfile
+ab 1 write -H "$(dconjur authn authenticate -H)" -p postfile "${BASE_URL}/secrets/conjur/variable/${TEST_VAR}"
+
+echo "Waiting for cluster to settle after reliability tests"
+until dconjur list variables; do
+  echo "Waiting for cluster to settle after reliability tests..."
+done
+echo "Cluster has settled"
 
 echo "Exercise Complete"
