@@ -8,6 +8,18 @@ set -x # After bash-lib init
 
 ADMIN_PASSWORD_SECRET_NAME="${ADMIN_PASSWORD_SECRET_NAME:-${STACK_NAME}_adminpassword}"
 
+remove_stack(){
+  echo "Initiating Stack Deletion: ${STACK_NAME}"
+  aws cloudformation delete-stack \
+    --stack-name "${STACK_NAME}"
+
+  echo "Waiting for stack deletion: ${STACK_NAME}"
+  aws cloudformation wait stack-delete-complete \
+    --stack-name "${STACK_NAME}"
+
+}
+
+
 if [[ -z "${STACK_NAME}" ]]; then
   bl_die "STACK_NAME must be set before running ${0}"
 fi
@@ -24,15 +36,7 @@ aws secretsmanager delete-secret --secret-id "${ADMIN_PASSWORD_SECRET_NAME}"
 echo "Storing stack resources"
 aws cloudformation describe-stack-resources --stack-name "${STACK_NAME}" --output json > stack_resources.json
 
-echo "Initiating Stack Deletion: ${STACK_NAME}"
-aws cloudformation delete-stack \
-  --stack-name "${STACK_NAME}"
-
-echo "Waiting for stack deletion: ${STACK_NAME}"
-aws cloudformation wait stack-delete-complete \
-  --stack-name "${STACK_NAME}"
-
-echo "Stack deletion complete: ${STACK_NAME}"
+bl_retry_constant 3 600 remove_stack
 
 echo "Removing leftover secrets"
 
