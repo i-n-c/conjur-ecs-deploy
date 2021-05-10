@@ -58,6 +58,13 @@ Parameters:
       Note that the console stores ASM secrets as JSON by default, but this
       value should refer to a non-JSON raw string secret.
     AllowedPattern: "^arn:aws:secretsmanager:.*"
+  ConjurDataKeyARN:
+    Type: String
+    Default: "Generate"
+    Description: >-
+      Amazon Resource Name of an Secrets Manager secret.
+      This secret will be used to set the conjur data key.
+      If the value is "Generate", then a new conjur data key will be generated.
   MinContainers:
     Type: Number
     Default: 2
@@ -118,8 +125,14 @@ Parameters:
       - 8192
     Description: Memory units to allocate to each container
 
+Conditions:
+  GenerateDataKey: !Equals
+    - !Ref ConjurDataKeyARN
+    - Generate
+
 Resources:
   ConjurDataKey:
+    Condition: GenerateDataKey
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Type: 'AWS::SecretsManager::Secret'
@@ -196,7 +209,10 @@ Resources:
             Resource:
               - !Ref ConjurAdminPasswordARN
               - !Ref ConjurDBPassword
-              - !Ref ConjurDataKey
+              - !If
+                - GenerateDataKey
+                - !Ref ConjurDataKey
+                - !Ref ConjurDataKeyARN
       Roles:
         - !Ref FargateExecutionRole
   FargateExecutionRole:
@@ -322,7 +338,10 @@ Resources:
               Value: !Ref PumaThreads
           Secrets:
             - Name: CONJUR_KEY
-              ValueFrom: !Ref ConjurDataKey
+              ValueFrom: !If
+                - GenerateDataKey
+                - !Ref ConjurDataKey
+                - !Ref ConjurDataKeyARN
             - Name: ConjurDBPassword
               ValueFrom: !Ref ConjurDBPassword
             - Name: ConjurAdminPassword

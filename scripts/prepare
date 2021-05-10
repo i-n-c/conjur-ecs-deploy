@@ -13,6 +13,8 @@ CONJUR_IMAGE="${CONJUR_IMAGE:-"cyberark/conjur:edge"}"
 SUB_DOMAIN="${SUB_DOMAIN:-"${STACK_NAME}"}"
 ADMIN_PASSWORD_SECRET_NAME="${ADMIN_PASSWORD_SECRET_NAME:-${STACK_NAME}_adminpassword}"
 ADMIN_PASSWORD_METADATA_FILE="admin_password_meta.json"
+CONJUR_DATAKEY_SECRET_NAME="${CONJUR_DATAKEY_SECRET_NAME:-Generate}"
+CONJUR_DATAKEY_METADATA_FILE="conjur_datakey_meta.json"
 PARAMS_TEMPLATE="${PARAMS_TEMPLATE:-${SCRIPTS_DIR}/params.template.json}"
 
 # Generate a random string of characters in a specific character class (according to tr)
@@ -27,6 +29,12 @@ get_admin_password_metadata(){
   aws secretsmanager describe-secret \
     --output json \
     --secret-id "${ADMIN_PASSWORD_SECRET_NAME}" | tee "${ADMIN_PASSWORD_METADATA_FILE}"
+}
+
+get_conjur_datakey_metadata(){
+  aws secretsmanager describe-secret \
+    --output json \
+    --secret-id "${CONJUR_DATAKEY_SECRET_NAME}" | tee "${CONJUR_DATAKEY_METADATA_FILE}"
 }
 
 echo "Resolving Docker Image to SHA"
@@ -61,11 +69,23 @@ fi
 # to disk so extract the ARN.
 ADMIN_PASSWORD_ARN="$(jq -r .ARN < "${ADMIN_PASSWORD_METADATA_FILE}" )"
 
+# If the value is Generate, pass that straight through to the template.
+# Otherwise resolves the secret name to an ARN.
+if [[ "${CONJUR_DATAKEY_SECRET_NAME}" != "Generate" ]]; then
+  get_conjur_datakey_metadata
+  CONJUR_DATAKEY_ARN="$(jq -r .ARN < "${CONJUR_DATAKEY_METADATA_FILE}" )"
+  echo "CONJUR_DATAKEY secret name ${CONJUR_DATAKEY_SECRET_NAME} resolved to ${CONJUR_DATAKEY_ARN}"
+else
+  echo "CONJUR_DATAKEY=Generate so it will be generated as part of the cloudformaiton template."
+  CONJUR_DATAKEY_ARN="Generate"
+fi
+
 echo "Templating Parameters File"
 sed \
   -e "s+%CONJUR_IMAGE%+${CONJUR_IMAGE}+" \
   -e "s/%SUB_DOMAIN%/${SUB_DOMAIN}/" \
   -e "s/%ADMIN_PASSWORD_ARN%/${ADMIN_PASSWORD_ARN}/" \
+  -e "s/%CONJUR_DATAKEY_ARN%/${CONJUR_DATAKEY_ARN}/" \
   -e "s/%DOMAIN_NAME%/${DOMAIN_NAME}/" \
   -e "s/%DOMAIN_ID%/${DOMAIN_ID}/" \
   < "${PARAMS_TEMPLATE}" \
