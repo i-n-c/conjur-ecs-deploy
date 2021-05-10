@@ -575,7 +575,7 @@ Resources:
         - !Ref PostgresSecurityGroup
       BackupRetentionPeriod: 14
       AutoMinorVersionUpgrade: false
-      DeleteAutomatedBackups: false
+      DeleteAutomatedBackups: true
       MultiAZ: true
       EnablePerformanceInsights: true
   LogGroup:
