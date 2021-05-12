@@ -96,6 +96,11 @@ The user deploying the stack must have the permissions specified in [deployer_ia
 We welcome contributions of all kinds to this repository. For instructions on how to get started and descriptions
 of our development workflows, please see our [contributing guide](CONTRIBUTING.md).
 
+## Known Limitations
+
+- The project requires a power user to deploy the stack. Please insure you keep this user's credentials secure.
+- The project does not validate user input.
+
 ## License
 
 Copyright (c) 2020 CyberArk Software Ltd. All rights reserved.
