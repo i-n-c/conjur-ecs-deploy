@@ -13,8 +13,15 @@ by CyberArk**. For more detailed information on our certification levels, see [o
 
 ## Requirements
 
-Minimum Conjur Version is 1.11.5
-Minimum AWS permissions for the deploying role can be found [here](#IAM-Policy).
+- Minimum Conjur Version is 1.11.6
+- Minimum AWS permissions for the deploying role can be found [here](#IAM-Policy).
+- Register a domain on Route53. Instructions can be found [here](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/domain-register.html#domain-register-procedure).
+- Create an Amazon Secrets Manager secret. This secret will be used to set the Conjur admin user's password. The value should be stored a non-JSON raw string secret and satisfy the following complexity:
+  - Between 12 and 128 characters
+  - 2 uppercase letters
+  - 2 lowercase letters
+  - 1 special character
+  - 1 digit 
 
 ## Architecture
 
@@ -52,7 +59,7 @@ The user deploying the stack must have the permissions specified in [deployer_ia
       scripts/generateEmptyParams cloudformation.yml > params_mystack.yml
     ```
 
-4. Customise the generated parameters file in your editor of choice.
+4. Customize the generated parameters file in your editor of choice.
 5. Launch a Stack
 
     Stack Name pattern: `[a-z][a-z0-9]+`

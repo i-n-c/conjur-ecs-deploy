@@ -41,7 +41,7 @@ Parameters:
   ConjurImage:
     Type: String
     Default: 'cyberark/conjur:edge'
-    Description: The Conjur Docker image. It must be v1.11.5+.
+    Description: The Conjur Docker image. It must be v1.11.6+.
   DomainName:
     Type: String
   SubDomain:
