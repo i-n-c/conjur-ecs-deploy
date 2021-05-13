@@ -58,5 +58,9 @@
   {
     "ParameterKey": "ConjurAdminPasswordARN",
     "ParameterValue": "%ADMIN_PASSWORD_ARN%"
+  },
+  {
+    "ParameterKey": "ConjurDataKeyARN",
+    "ParameterValue": "%CONJUR_DATAKEY_ARN%"
   }
 ]

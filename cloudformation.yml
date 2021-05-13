@@ -1,5 +1,11 @@
 ---
 AWSTemplateFormatVersion: 2010-09-09
+Metadata:
+  cfn-lint:
+    config:
+      ignore_checks:
+        - E3008
+        - E1029
 Parameters:
   VpcCIDR:
     Type: String
@@ -52,20 +58,83 @@ Parameters:
       Note that the console stores ASM secrets as JSON by default, but this
       value should refer to a non-JSON raw string secret.
     AllowedPattern: "^arn:aws:secretsmanager:.*"
+  ConjurDataKeyARN:
+    Type: String
+    Default: "Generate"
+    Description: >-
+      Amazon Resource Name of an Secrets Manager secret.
+      This secret will be used to set the conjur data key.
+      If the value is "Generate", then a new conjur data key will be generated.
   MinContainers:
     Type: Number
     Default: 2
+    MinValue: 1
     Description: Min Conjur instances in cluster
   MaxContainers:
     Type: Number
     Default: 10
+    MinValue: 1
     Description: Max Conjur instances in cluster
   AutoScalingTargetValue:
     Type: Number
     Default: 50
-    Description: Target CPU utilization (%) of container
+    Description: Target value for metric specified in AutoScalingMetric
+  AutoScalingMetric:
+    Type: String
+    Default: ECSServiceAverageCPUUtilization
+    Description: Metric to track when scaling containers up/down
+    AllowedValues:
+      - ECSServiceAverageCPUUtilization
+      - ECSServiceAverageMemoryUtilization
+      - ALBRequestCountPerTarget
+  PumaThreads:
+    Type: Number
+    Default: 5
+    MinValue: 1
+    Description: Number of threads per puma process
+  ContainerProcesses:
+    Type: Number
+    Default: 50
+    MinValue: 1
+    Description: Number of puma processes per container
+  ContainerCPU:
+    Type: Number
+    AllowedValues:
+      - 256
+      - 512
+      - 1024
+      - 2048
+      - 4096
+    Default: 4096
+    Description: |
+      CPU units to allocate to each container.
+      See https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-cpu-memory-error.html
+      for valid CPU  & Memory combinations.
+  ContainerMemory:
+    Type: Number
+    Default: 8192
+    AllowedValues:
+      - 512
+      - 1024
+      - 2048
+      - 3072
+      - 4096
+      - 5120
+      - 6144
+      - 7168
+      - 8192
+    Description: Memory units to allocate to each container
+
+Conditions:
+  GenerateDataKey: !Equals
+    - !Ref ConjurDataKeyARN
+    - Generate
+
 Resources:
   ConjurDataKey:
+    Condition: GenerateDataKey
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Type: 'AWS::SecretsManager::Secret'
     Properties:
       Description: Conjur Data Key
@@ -81,6 +150,8 @@ Resources:
   #       PasswordLength: 120
   #       RequireEachIncludedType: true
   ConjurDBPassword:
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Type: 'AWS::SecretsManager::Secret'
     Properties:
       Description: Conjur DB Password
@@ -138,7 +209,10 @@ Resources:
             Resource:
               - !Ref ConjurAdminPasswordARN
               - !Ref ConjurDBPassword
-              - !Ref ConjurDataKey
+              - !If
+                - GenerateDataKey
+                - !Ref ConjurDataKey
+                - !Ref ConjurDataKeyARN
       Roles:
         - !Ref FargateExecutionRole
   FargateExecutionRole:
@@ -204,7 +278,7 @@ Resources:
       ScalingTargetId: !Ref ScalableTarget
       TargetTrackingScalingPolicyConfiguration:
         PredefinedMetricSpecification:
-          PredefinedMetricType: ECSServiceAverageCPUUtilization
+          PredefinedMetricType: !Ref AutoScalingMetric
         TargetValue: !Ref AutoScalingTargetValue
         ScaleInCooldown: 5
         ScaleOutCooldown: 30
@@ -212,8 +286,8 @@ Resources:
     Type: 'AWS::ECS::TaskDefinition'
     Properties:
       Family: conjur-deployment-task
-      Cpu: 4096
-      Memory: 8192
+      Cpu: !Ref ContainerCPU
+      Memory: !Ref ContainerMemory
       NetworkMode: awsvpc
       ExecutionRoleArn: !Ref FargateExecutionRole
       ContainerDefinitions:
@@ -226,7 +300,6 @@ Resources:
             - >-
                 set +o history;
                 history -c;
-                set -ev;
                 export CONJUR_DATA_KEY=$( echo -n $CONJUR_KEY | base64);
                 export DATABASE_URL="postgres://conjur:${ConjurDBPassword}@${DBEndpoint}:${DBPort}/postgres";
                 mkdir -p /puma;
@@ -234,7 +307,8 @@ Resources:
                 conjurctl server --port 443 --bind "ssl://0.0.0.0:443?key=/puma/key.pem&cert=/puma/cert.pem" &
                 echo "conjurctl wait doesn't support ssl :( so use curl in a loop";
                 until curl -k https://localhost/ |grep -i "your conjur server is running"; do echo "Waiting for conjur to come up"; sleep 1; done;
-                echo -n "${ConjurAdminPassword}" | conjurctl account create --name conjur --password-from-stdin;
+                AdminApiKey="$(conjurctl account create conjur | awk -F': ' '/^API/{print $2}')";
+                curl -k --request PUT --data "${ConjurAdminPassword}" --user "admin:${AdminApiKey}" https://localhost/authn/conjur/password;
                 sleep infinity
           PortMappings:
             - ContainerPort: 443
@@ -259,12 +333,15 @@ Resources:
             - Name: TRUSTED_PROXIES
               Value: !Sub '${PublicSubnetCIDR1},${PublicSubnetCIDR2}'
             - Name: WEB_CONCURRENCY
-              Value: 50
+              Value: !Ref ContainerProcesses
             - Name: RAILS_MAX_THREADS
-              Value: 5
+              Value: !Ref PumaThreads
           Secrets:
             - Name: CONJUR_KEY
-              ValueFrom: !Ref ConjurDataKey
+              ValueFrom: !If
+                - GenerateDataKey
+                - !Ref ConjurDataKey
+                - !Ref ConjurDataKeyARN
             - Name: ConjurDBPassword
               ValueFrom: !Ref ConjurDBPassword
             - Name: ConjurAdminPassword
@@ -498,11 +575,12 @@ Resources:
   ConjurDB:
     Type: 'AWS::RDS::DBInstance'
     DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
     Properties:
       DBName: !Ref 'AWS::StackName'
       Engine: postgres
-      EngineVersion: 10.15
-      AllocatedStorage: 20
+      EngineVersion: "10.15"
+      AllocatedStorage: "20"
       StorageType: gp2
       DBInstanceClass: db.t3.medium
       MasterUsername: conjur
@@ -516,8 +594,11 @@ Resources:
         - !Ref PostgresSecurityGroup
       BackupRetentionPeriod: 14
       AutoMinorVersionUpgrade: false
-      DeleteAutomatedBackups: false
+      DeleteAutomatedBackups: true
+      MultiAZ: true
+      EnablePerformanceInsights: true
   LogGroup:
     Type: 'AWS::Logs::LogGroup'
     Properties:
       LogGroupName: !Sub '${AWS::StackName}-conjur-log-group'
+      RetentionInDays: 90
