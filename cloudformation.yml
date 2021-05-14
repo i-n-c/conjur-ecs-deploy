@@ -65,6 +65,13 @@ Parameters:
       Amazon Resource Name of an Secrets Manager secret.
       This secret will be used to set the conjur data key.
       If the value is "Generate", then a new conjur data key will be generated.
+  ConjurDBPasswordARN:
+    Type: String
+    Default: "Generate"
+    Description: >-
+      Amazon Resource Name of an Secrets Manager secret.
+      This secret will be used to set the conjur Admin Password.
+      If the value is "Generate", then a new conjur admin password will be generated.
   MinContainers:
     Type: Number
     Default: 2
@@ -129,6 +136,9 @@ Conditions:
   GenerateDataKey: !Equals
     - !Ref ConjurDataKeyARN
     - Generate
+  GenerateDBPassword: !Equals
+    - !Ref ConjurDBPasswordARN
+    - Generate
 
 Resources:
   ConjurDataKey:
@@ -150,6 +160,7 @@ Resources:
   #       PasswordLength: 120
   #       RequireEachIncludedType: true
   ConjurDBPassword:
+    Condition: GenerateDBPassword
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Type: 'AWS::SecretsManager::Secret'
@@ -208,7 +219,10 @@ Resources:
               - 'secretsmanager:GetSecretValue'
             Resource:
               - !Ref ConjurAdminPasswordARN
-              - !Ref ConjurDBPassword
+              - !If
+                - GenerateDBPassword
+                - !Ref ConjurDBPassword
+                - !Ref ConjurDBPasswordARN
               - !If
                 - GenerateDataKey
                 - !Ref ConjurDataKey
@@ -343,7 +357,10 @@ Resources:
                 - !Ref ConjurDataKey
                 - !Ref ConjurDataKeyARN
             - Name: ConjurDBPassword
-              ValueFrom: !Ref ConjurDBPassword
+              ValueFrom: !If
+                - GenerateDBPassword
+                - !Ref ConjurDBPassword
+                - !Ref ConjurDBPasswordARN
             - Name: ConjurAdminPassword
               ValueFrom: !Ref ConjurAdminPasswordARN
       RequiresCompatibilities:
@@ -594,7 +611,10 @@ Resources:
       MasterUserPassword: !Join
         - ''
         - - '{{resolve:secretsmanager:'
-          - !Ref ConjurDBPassword
+          - !If
+            - GenerateDBPassword
+            - !Ref ConjurDBPassword
+            - !Ref ConjurDBPasswordARN
           - '}}'
       DBSubnetGroupName: !Ref DBSubnetGroup
       VPCSecurityGroups:

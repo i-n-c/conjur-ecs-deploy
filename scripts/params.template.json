@@ -62,5 +62,9 @@
   {
     "ParameterKey": "ConjurDataKeyARN",
     "ParameterValue": "%CONJUR_DATAKEY_ARN%"
+  },
+  {
+    "ParameterKey": "ConjurDBPasswordARN",
+    "ParameterValue": "%CONJUR_DBPASSWORD_ARN%"
   }
 ]
