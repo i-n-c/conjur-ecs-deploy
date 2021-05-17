@@ -164,6 +164,7 @@ Resources:
       Description: Conjur Data Key
       Name: !Sub '${AWS::StackName}-conjur_key'
       GenerateSecretString:
+        PasswordLength: 32
         ExcludePunctuation: true
   # ConjurAdminPassword:
   #   Type: 'AWS::SecretsManager::Secret'
@@ -328,7 +329,15 @@ Resources:
             - >-
                 set +o history;
                 history -c;
-                export CONJUR_DATA_KEY=$( echo -n $CONJUR_KEY | base64);
+                if [[ "$(base64 -d <<<"${CONJUR_KEY}" |wc -c |sed 's/[^0-9]*//')" == 32 ]]; then
+                  echo "Passing through CONJUR_DATA_KEY without b64 encoding";
+                  export CONJUR_DATA_KEY="${CONJUR_KEY}";
+                elif [[ "$( echo -n "${CONJUR_KEY}" | wc -c | sed 's/[^0-9]*//')" == 32 ]]; then
+                  echo "Base64 encoding the supplied value for CONJUR_DATA_KEY";
+                  export CONJUR_DATA_KEY="$( echo -n "${CONJUR_KEY}" | base64)";
+                else
+                  echo "Invalid CONJUR_KEY must be 32 bytes. Can optionally be base64 encoded.";
+                fi;
                 export DATABASE_URL="postgres://conjur:${ConjurDBPassword}@${DBEndpoint}:${DBPort}/postgres";
                 mkdir -p /puma;
                 openssl req -x509 -newkey rsa:4096 -keyout /puma/key.pem -out /puma/cert.pem -days 365 -subj "/CN=localhost" -nodes;
