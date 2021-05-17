@@ -41,6 +41,18 @@ export LOG_GROUP="${STACK_NAME}-conjur-log-group"
 LOG_TAIL_PID="${!}"
 trap 'collect_lb_logs; kill -9 ${LOG_TAIL_PID} || true' EXIT
 
+# Exercise is often run first thing after deploy. Ensure the cluster has settled
+# before getting started.
+for _ in {1..120}; do
+  if curl -k "${BASE_URL}" | grep -i "your conjur server is running"; then
+    echo "Exercise script detects conjur is up, proceeding to exercise."
+    break
+  else
+    echo "Exercise script waiting for conjur to come up"
+    sleep 5
+  fi
+done;
+
 . "${SCRIPTS_DIR}/conjur_login"
 
 # Load Policy
