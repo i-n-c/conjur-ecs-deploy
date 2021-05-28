@@ -16,6 +16,11 @@ pipeline {
         sh 'scripts/lint'
       }
     }
+    stage('Validate Changelog') {
+      steps {
+        sh 'ci/parse-changelog'
+      }
+    }
     stage('Smoke Test'){
       environment {
         STACK_NAME = "ecsdeployci${BRANCH_NAME.replaceAll("[^A-Za-z0-9]", "").take(6)}${BUILD_NUMBER}"
