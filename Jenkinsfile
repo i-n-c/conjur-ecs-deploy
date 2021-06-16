@@ -6,6 +6,10 @@ pipeline {
     buildDiscarder(logRotator(numToKeepStr: '30'))
   }
 
+  parameters {
+    string(name: 'CONJUR_IMAGE', defaultValue: 'cyberark/conjur:edge', description: 'Conjur image to deploy')
+  }
+
   triggers {
     cron(getDailyCronString())
   }
