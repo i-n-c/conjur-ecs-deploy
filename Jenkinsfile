@@ -39,7 +39,7 @@ pipeline {
           archiveArtifacts(artifacts: 'params.json')
           archiveArtifacts(artifacts: 'admin_password_meta.json', allowEmptyArchive: true)
           archiveArtifacts(artifacts: 'stack_*.json')
-          archiveArtifacts(artifacts: '*.log', allowEmptyArchive: true)
+          archiveArtifacts(artifacts: '**/*.log', allowEmptyArchive: true)
           sh 'summon -f scripts/secrets.yml scripts/cleanup'
         }
       }
