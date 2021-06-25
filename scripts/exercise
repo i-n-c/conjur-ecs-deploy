@@ -99,13 +99,13 @@ echo "Testing serial requests to root url"
 ab 1 root "${BASE_URL}/"
 
 echo "Testing parallel requests to root url"
-ab 2 root "${BASE_URL}/"
+ab 50 root "${BASE_URL}/"
 
 echo "Testing serial variable reads"
 ab 1 "read" -H "$(dconjur authn authenticate -H)" "${BASE_URL}/secrets/conjur/variable/${TEST_VAR}"
 
 echo "Testing parallel variable reads"
-ab 2 "read" -H "$(dconjur authn authenticate -H)" "${BASE_URL}/secrets/conjur/variable/${TEST_VAR}"
+ab 50 "read" -H "$(dconjur authn authenticate -H)" "${BASE_URL}/secrets/conjur/variable/${TEST_VAR}"
 
 echo "Testing serial write"
 date > postfile
