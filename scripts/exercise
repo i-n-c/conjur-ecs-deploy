@@ -17,6 +17,7 @@ TEST_POLICY_FILE="scripts/test_policy.yml"
 
 collect_lb_logs(){
   echo "Collecting LB Logs"
+  # LB logs are delievered every 5 minutes
   echo "Sleeping 6 minutes to allow async log delivery to complete"
   sleep 360
   mkdir -p lblogsync lb_logs
@@ -80,6 +81,7 @@ ab(){
   name="${2}"
   shift; shift
   log="ab_${concurrency}_${name}.log"
+  echo "Recording ab results to ${log}"
   docker run\
     --rm \
     --volume "${PWD}:${PWD}" \
@@ -90,7 +92,7 @@ ab(){
     -c "${concurrency}" \
     -v 4 \
     "${@}" \
-    | tee "${log}"
+    &> "${log}"
   grep '^Failed requests:\s*0' "${log}"
   ! grep '^Non-2xx responses:' "${log}"
 }
