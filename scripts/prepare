@@ -77,6 +77,13 @@ CONJUR_IMAGE="$(docker inspect --format='{{index .RepoDigests 0}}' "${CONJUR_IMA
 echo "${ORIGINAL_CONJUR_IMAGE} resolved to ${CONJUR_IMAGE}"
 echo "${CONJUR_IMAGE}" > conjur_image
 
+# Extract the git commit the conjur git commit from image and store it as a file, so it can be
+# collected as a Jenkins artifact, ignore failure because older conjur images don't contain the commit
+# file.
+echo -n "Conjur container git commit: "
+docker run --rm --entrypoint bash "${CONJUR_IMAGE}" -c 'cat conjur_git_commit' | tee conjur_git_commit ||:
+echo
+
 # Find or create the conjur admin password secret in asm
 # The admin password is handled seperately from the db password and datakey as we may have to generate it.
 if get_admin_password_metadata; then

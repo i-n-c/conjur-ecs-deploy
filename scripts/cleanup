@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
+set -uo pipefail
 
 SCRIPTS_DIR="$(dirname "${BASH_SOURCE[0]}")"
 . "${SCRIPTS_DIR}/../bash-lib/init"
@@ -31,10 +31,13 @@ STACK_ARN="$(aws cloudformation describe-stacks \
 echo "Resolved stack name ${STACK_NAME} to ARN: ${STACK_ARN}"
 
 echo "Removing admin password secret"
-aws secretsmanager delete-secret --secret-id "${ADMIN_PASSWORD_SECRET_NAME}"
+aws secretsmanager delete-secret --secret-id "${ADMIN_PASSWORD_SECRET_NAME}" ||:
 
 echo "Storing stack resources"
 aws cloudformation describe-stack-resources --stack-name "${STACK_NAME}" --output json > stack_resources.json
+
+echo "Removing LB Logs S3 Bucket"
+aws s3 rb "s3://org-conjur-${STACK_NAME}-alb-log-bucket" --force ||:
 
 bl_retry_constant 3 600 remove_stack
 

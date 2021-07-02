@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+
+set -xeuo pipefail
+
+# Script for finding which conjur change caused a conjur-ecs-deploy problem
+# by testing a range of conjur  (or conjur-dependency) versions.
+
+# The last three functions are the different modes of operation,
+# modify the last line to call the function you are interested in.
+
+# This script assumes conjur is checked out adjacent to conjur-ecs-deploy
+# and that it is being executed from the root of conjur-ecs-deploy.
+
+SCRIPTS_DIR="$(dirname "${BASH_SOURCE[0]}")"
+. "${SCRIPTS_DIR}/../bash-lib/init"
+
+SCRIPTS_DIR="$(bl_abs_path "${SCRIPTS_DIR}")"
+
+# Test images are pushed to dockerhub, set your dockerhub user here. The image
+# used is "pts" because I happened to have a test image already called that.
+# Also it doesn't contain the string Conjur so it won't appear in search results
+# for Conjur.
+DOCKERHUB_USER="${DOCKERHUB_USER:-hughsaunders}"
+
+if [[ "$(basename "$PWD")" != "conjur-ecs-deploy" ]]; then
+    echo "Please run this script from the root of conjur-ecs-deploy"
+    exit 1
+fi
+
+if [[ ! -d ../conjur ]]; then
+    echo "This script assumes conjur is checked out adjacent to conjur-ecs-deploy"
+    exit 1
+fi
+
+if [[ -z "${JENKINS_AUTH}" ]]; then
+    echo "JENKINS_AUTH env var must be set to username:token before running this script"
+    exit 1
+fi
+
+function version_tag() {
+    git rev-parse --short=8 HEAD
+}
+
+run_ecs_build(){
+    IMAGE="${1}"
+    python3 -c 'import requests' || python3 -m pip install requests
+
+    JENKINS_AUTH_TOKEN="${JENKINS_AUTH}" \
+        JENKINS_URL="jenkins.conjur.net" \
+        JENKINS_JOB_NAME="cyberark--conjur-ecs-deploy/job/increasedbconnections-790" \
+        JENKINS_CONJUR_IMAGE="${IMAGE}" \
+        python3 "${SCRIPTS_DIR}/run_jenkins_build.py"
+}
+
+conjur_bisect(){
+    # This function uses git-bisect to test a range of Conjur commits, running
+    # the conjur-ecs-deploy jenkins job against all the commits suggested by
+    # git-bisect.
+    pushd ../conjur
+    git bisect reset
+    git bisect start
+    git checkout v1.11.7
+    git bisect bad
+    git bisect good v1.11.6
+
+    while :; do
+        TAG="$(version_tag)"
+        docker build -t "conjur:${TAG}" .
+        docker tag "conjur:${TAG}" "${DOCKERHUB_USER}/pts:${TAG}"
+        docker push "${DOCKERHUB_USER}/pts:${TAG}"
+        if run_ecs_build "${DOCKERHUB_USER}/pts:${TAG}"; then
+            git bisect good | tee bisect.out
+        else
+            git bisect bad | tee bisect.out
+        fi
+        grep -i "is the first" bisect.out && break
+    done
+}
+
+puma_bisect(){
+
+    # This function is for running conjur-ecs-deploy pipeline against a range of
+    # Puma (a Conjur dependency) versions to see which one introduces the
+    # problem. It uses a python implementation of the bisection algorithm to
+    # test as few version as possible. puma_versions.txt isn't checked in but is
+    # a file containging one gem version per line.
+
+    rm -f ../puma_versions.txt.bisect_state
+    #3.12.5 --> 4.3.8
+    scripts/listbisect.py --file ../puma_versions.txt mark-good --line 3.12.5
+    scripts/listbisect.py --file ../puma_versions.txt mark-bad --line 4.3.8
+
+    pushd ../conjur
+    while :; do
+        test_version="$(../conjur-ecs-deploy/scripts/listbisect.py --file ../puma_versions.txt next-line)"
+        # Exit when bisection is complete
+        if grep 'first bad version is' <<<"${test_version}"; then
+            echo "${test_version}"
+            break
+        fi
+        TAG="${test_version}"
+
+        # Change Gemfile and Gemfile.lock to use test puma version
+        cpv="4.3.8" # current puma version
+        git checkout -- Gemfile
+        git checkout -- Gemfile.lock
+        sed -i -e "s/${cpv}/${test_version}/g" Gemfile
+        sed -i -e "s/${cpv}/${test_version}/g" Gemfile.lock
+
+        docker build -t "conjur:${TAG}" .
+        docker tag "conjur:${TAG}" "${DOCKERHUB_USER}/pts:${TAG}"
+        docker push "${DOCKERHUB_USER}/pts:${TAG}"
+        if run_ecs_build "${DOCKERHUB_USER}/pts:${TAG}"; then
+            echo "first data timeout is good"
+            ../conjur-ecs-deploy/scripts/listbisect.py --file ../puma_versions.txt mark-good --line "${test_version}"
+        else
+            ../conjur-ecs-deploy/scripts/listbisect.py --file ../puma_versions.txt mark-bad --line "${test_version}"
+            echo "first data timeout is bad"
+        fi
+    done
+}
+
+run_custom_conjur(){
+
+    # This function is for testing a single custom conjur version
+    # against conjur-ecs-deploy
+
+    pushd ../conjur
+    TAG="customconjurtest"
+
+    # This function doesn't modify conjur at all, make any
+    # modifications to conjur before running .
+
+    docker build -t "conjur:${TAG}" .
+    docker tag "conjur:${TAG}" "${DOCKERHUB_USER}/pts:${TAG}"
+    docker push "${DOCKERHUB_USER}/pts:${TAG}"
+    if run_ecs_build "${DOCKERHUB_USER}/pts:${TAG}"; then
+        echo "Build Succeded"
+    else
+        echo "Build Failed"
+    fi
+}
+run_custom_conjur

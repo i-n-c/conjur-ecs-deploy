@@ -131,6 +131,20 @@ Parameters:
       - 7168
       - 8192
     Description: Memory units to allocate to each container
+  DBMaxConnections:
+    Type: Number
+    Default: 2000
+    MaxValue: 8388607
+    MinValue: 6
+    Description: |
+      Maximum number of simultaneous connections the RDS Postgres Database should accept
+      By default this is the memory of the instance in bytes / some value that depends
+      on the db family (engine, engine version). For conjur-ecs deploy it works out
+      at about 350 with a 4GB RDS instance. A rule of thumb for setting this value
+      is: MaxContainers * ContainerProcesses * PumaThreads * 1.25git
+      The 1.25 is to leave reserved connections for replicas and admins.
+      For the defaults thats 6 * 50 * 5 * 1.25 = 1875, which I've rounded up to 2000.
+      See: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_Limits.html#RDS_Limits.MaxConnections
 
 Conditions:
   GenerateDataKey: !Equals
@@ -535,8 +549,47 @@ Resources:
       Protocol: HTTPS
       UnhealthyThresholdCount: 3
       VpcId: !Ref VpcId
+  LBLogsBucket:
+    Type: AWS::S3::Bucket
+    # The bucket is deleted by the cleanup script because cloudformation
+    # can't remove non-empty buckets
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub 'org-conjur-${AWS::StackName}-alb-log-bucket'
+      PublicAccessBlockConfiguration:
+        RestrictPublicBuckets: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        BlockPublicAcls: true
+      AccessControl: Private
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireLBLogs
+            ExpirationInDays: 60
+            Status: Enabled
+  LogsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref 'LBLogsBucket'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ALBAccessLogs20130930put
+            Effect: Allow
+            Resource: !Join ['', ['arn:aws:s3:::', !Ref 'LBLogsBucket', /, Logs, /AWSLogs/, !Ref 'AWS::AccountId', /*]]
+            Principal:
+              AWS: '127311923021'
+            Action: ['s3:PutObject']
+          - Sid: ALBAccessLogs20130930get
+            Effect: Allow
+            Resource: !Join ['', ['arn:aws:s3:::', !Ref 'LBLogsBucket', /, Logs, /AWSLogs/, !Ref 'AWS::AccountId', /*]]
+            Principal:
+              AWS: !Ref 'AWS::AccountId'
+            Action: ['s3:GetObject']
   LoadBalancer:
     Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+    DependsOn: LogsBucketPolicy
     Properties:
       Name: !Ref 'AWS::StackName'
       SecurityGroups:
@@ -552,6 +605,13 @@ Resources:
         # of 20s, so 10s should be safe here.
         - Key: idle_timeout.timeout_seconds
           Value: "10"
+        - Key: access_logs.s3.enabled
+          Value: "true"
+        - Key: access_logs.s3.bucket
+          Value: !Ref LBLogsBucket
+        - Key: access_logs.s3.prefix
+          Value: Logs
+
   Route53Record:
     Type: 'AWS::Route53::RecordSet'
     Properties:
@@ -596,11 +656,21 @@ Resources:
             - '*'
       ListenerArn: !Ref Listener
       Priority: 1
+
+  ConjurDBParameterGroup:
+    Type: AWS::RDS::DBParameterGroup
+    Properties:
+      Description: DB Params for conjur-ecs-deploy RDS Postgres instances
+      Family: postgres10
+      Parameters:
+        max_connections: !Ref DBMaxConnections
+
   ConjurDB:
     Type: 'AWS::RDS::DBInstance'
     DeletionPolicy: Snapshot
     UpdateReplacePolicy: Snapshot
     Properties:
+      DBParameterGroupName: !Ref ConjurDBParameterGroup
       DBName: !Ref 'AWS::StackName'
       Engine: postgres
       EngineVersion: "10.15"
@@ -629,3 +699,7 @@ Resources:
     Properties:
       LogGroupName: !Sub '${AWS::StackName}-conjur-log-group'
       RetentionInDays: 90
+Outputs:
+  LBLogsBucket:
+    Description: S3 Bucket URL for the LB access logs
+    Value: !GetAtt  LBLogsBucket.Arn

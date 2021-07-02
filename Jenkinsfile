@@ -6,6 +6,10 @@ pipeline {
     buildDiscarder(logRotator(numToKeepStr: '30'))
   }
 
+  parameters {
+    string(name: 'CONJUR_IMAGE', defaultValue: 'cyberark/conjur:edge', description: 'Conjur image to deploy')
+  }
+
   triggers {
     cron(getDailyCronString())
   }
@@ -35,7 +39,8 @@ pipeline {
           archiveArtifacts(artifacts: 'params.json')
           archiveArtifacts(artifacts: 'admin_password_meta.json', allowEmptyArchive: true)
           archiveArtifacts(artifacts: 'stack_*.json')
-          archiveArtifacts(artifacts: '*.log', allowEmptyArchive: true)
+          archiveArtifacts(artifacts: '**/*.log', allowEmptyArchive: true)
+          archiveArtifacts(artifacts: 'conjur_git_commit', allowEmptyArchive: true)
           sh 'summon -f scripts/secrets.yml scripts/cleanup'
         }
       }
