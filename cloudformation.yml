@@ -601,10 +601,11 @@ Resources:
       LoadBalancerAttributes:
         # Its important that the idle timeout is lower than the target's timeout (puma).
         # Otherwise the webserver may timeout a session at the same time the lb is sending
-        # a request, which leads to seemingly random 502 errors. Puma has a default timeout
-        # of 20s, so 10s should be safe here.
+        # a request, which leads to seemingly random 502 errors. Conjur sets puma's timeout
+        # to 80, so this value must be <80. The LB uses this as an upperbound on  waiting
+        # for responses, so it needs to be as high enough to allow complex policy loads.
         - Key: idle_timeout.timeout_seconds
-          Value: "10"
+          Value: "55"
         - Key: access_logs.s3.enabled
           Value: "true"
         - Key: access_logs.s3.bucket
