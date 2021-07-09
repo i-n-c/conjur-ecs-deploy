@@ -29,7 +29,7 @@ DEPLOYED_CONJUR_IMAGE="$(aws ecs describe-task-definition \
   --task-definition "${TASK_DEFINITION_ARN}" \
   | jq -r '.taskDefinition.containerDefinitions[0].image')"
 
-if [[ "${DEPLOYED_CONJUR_IMAGE}" == "${PROPOSED_CONJUR_IMAGE}" ]] && [[ "${ALLOW_UPDATE_WITH_SAME_IMAGE:-NO}" == "NO" ]]; then
+if [[ "${DEPLOYED_CONJUR_IMAGE}" == "${PROPOSED_CONJUR_IMAGE}" ]] && [[ "${ALLOW_UPDATE_WITH_SAME_IMAGE:-false}" == "false" ]]; then
   echo "Deployed and proposed conjur images are both ${DEPLOYED_CONJUR_IMAGE}, skipping update."
   echo "Please set ALLOW_UPDATE_WITH_SAME_IMAGE=YES if you need to run an update with the same image."
   exit 0
