@@ -45,15 +45,35 @@
   },
   {
     "ParameterKey": "MinContainers",
-    "ParameterValue": "2"
+    "ParameterValue": "%MIN_CONTAINERS%"
   },
   {
     "ParameterKey": "MaxContainers",
-    "ParameterValue": "6"
+    "ParameterValue": "%MAX_CONTAINERS%"
+  },
+  {
+    "ParameterKey": "PumaThreads",
+    "ParameterValue": "%PUMA_THREADS%"
+  },
+  {
+    "ParameterKey": "ContainerProcesses",
+    "ParameterValue": "%CONTAINER_PROCESSES%"
+  },
+  {
+    "ParameterKey": "ContainerMemory",
+    "ParameterValue": "%CONTAINER_MEMORY%"
+  },
+  {
+    "ParameterKey": "ContainerCPU",
+    "ParameterValue": "%CONTAINER_CPU%"
+  },
+  {
+    "ParameterKey": "AutoScalingMetric",
+    "ParameterValue": "%AUTO_SCALING_METRIC%"
   },
   {
     "ParameterKey": "AutoScalingTargetValue",
-    "ParameterValue": "50"
+    "ParameterValue": "%AUTO_SCALING_TARGET%"
   },
   {
     "ParameterKey": "ConjurAdminPasswordARN",
