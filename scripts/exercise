@@ -26,10 +26,11 @@ collect_lb_logs(){
   # Move all the logs to lb_logs to flatten the hierachy
   find lblogsync -name "*.log.gz" | while read -r log; do
     mv "${log}" lb_logs
+    # Unzip because jenkins doesn't unzip artifacts in the view route
+    # (Jenkins does unzip job logs, but not artifacts)
+    # One at a time as sometimes there is an invalid zip file :(
+    gunzip "lb_logs/$(basename "${log}")" ||:
   done
-  # Unzip because jenkins doesn't unzip artifacts in the view route
-  # (Jenkins does unzip job logs, but not artifacts)
-  gunzip lb_logs/*
   rm -rf lblogsync
 }
 
