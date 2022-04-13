@@ -684,7 +684,7 @@ Resources:
       DBParameterGroupName: !Ref ConjurDBParameterGroup
       DBName: !Ref 'AWS::StackName'
       Engine: postgres
-      EngineVersion: "10.15"
+      EngineVersion: "10.20"
       AllocatedStorage: "20"
       StorageType: gp2
       DBInstanceClass: db.t3.medium
@@ -701,7 +701,7 @@ Resources:
       VPCSecurityGroups:
         - !Ref PostgresSecurityGroup
       BackupRetentionPeriod: 14
-      AutoMinorVersionUpgrade: false
+      AutoMinorVersionUpgrade: true
       DeleteAutomatedBackups: true
       MultiAZ: true
       EnablePerformanceInsights: true
