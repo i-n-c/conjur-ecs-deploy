@@ -86,5 +86,13 @@
   {
     "ParameterKey": "ConjurDBPasswordARN",
     "ParameterValue": "%CONJUR_DBPASSWORD_ARN%"
+  },
+  {
+    "ParameterKey": "ElbPrefixListId",
+    "ParameterValue": "%ELB_PREFIXLIST_ID%"
+  },
+  {
+    "ParameterKey": "ElbCidr",
+    "ParameterValue": "%ELB_CIDR%"
   }
 ]
