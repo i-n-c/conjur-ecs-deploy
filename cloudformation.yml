@@ -672,7 +672,7 @@ Resources:
     Type: AWS::RDS::DBParameterGroup
     Properties:
       Description: DB Params for conjur-ecs-deploy RDS Postgres instances
-      Family: postgres10
+      Family: postgres15
       Parameters:
         max_connections: !Ref DBMaxConnections
 
@@ -684,7 +684,7 @@ Resources:
       DBParameterGroupName: !Ref ConjurDBParameterGroup
       DBName: !Ref 'AWS::StackName'
       Engine: postgres
-      EngineVersion: "10.20"
+      EngineVersion: "15.3"
       AllocatedStorage: "20"
       StorageType: gp2
       DBInstanceClass: db.t3.medium
