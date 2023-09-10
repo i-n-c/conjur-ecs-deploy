@@ -15,6 +15,12 @@ pipeline {
   }
 
   stages {
+    stage('NewOne'){
+      steps {
+        sh 'echo "MADEUP_VERSION=5"'
+      }
+    }
+    
     stage('Lint'){
       steps {
         sh 'scripts/lint'
